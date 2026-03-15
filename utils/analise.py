@@ -86,15 +86,49 @@ def analisar_juro_real(selic, ipca_acum, focus_ipca=None):
     """Analisa o juro real e gera texto interpretativo."""
     if selic is None or ipca_acum is None:
         return "Dados insuficientes."
+
     juro_real = round(((1 + selic/100) / (1 + ipca_acum/100) - 1) * 100, 2)
-    nivel = ("muito restritivo" if juro_real > 6
-             else "restritivo" if juro_real > 3
-             else "neutro" if juro_real > 0
-             else "expansionista")
-    return (
-        f"**[Juro Real]** Com Selic de {selic:.2f}% e IPCA de {ipca_acum:.2f}%, "
-        f"a taxa real de juros está em **{juro_real:.2f}%** — nível **{nivel}**."
+
+    if juro_real > 8:
+        nivel = "extremamente restritivo"
+        tom = "vermelho"
+    elif juro_real > 6:
+        nivel = "muito restritivo"
+        tom = "vermelho"
+    elif juro_real > 3:
+        nivel = "restritivo"
+        tom = "amarelo"
+    elif juro_real > 0:
+        nivel = "levemente positivo"
+        tom = "verde"
+    else:
+        nivel = "negativo (expansionista)"
+        tom = "verde"
+
+    linhas = [
+        f"**[Juro Real Ex-post]** Com Selic de **{selic:.2f}%** e IPCA "
+        f"acumulado de **{ipca_acum:.2f}%**, a taxa real de juros está em "
+        f"**{juro_real:.2f}% a.a.** — nivel {nivel}."
+    ]
+
+    if focus_ipca is not None:
+        juro_exante = round(((1 + selic/100) / (1 + focus_ipca/100) - 1) * 100, 2)
+        diff = round(juro_real - juro_exante, 2)
+        linhas.append(
+            f"**[Juro Real Ex-ante]** Usando a expectativa Focus de IPCA "
+            f"de **{focus_ipca:.2f}%**, o juro real esperado e de "
+            f"**{juro_exante:.2f}% a.a.** — diferenca de {diff:+.2f}pp em relacao "
+            f"ao ex-post."
+        )
+
+    linhas.append(
+        f"**[Contexto]** O juro real brasileiro de {juro_real:.2f}% "
+        f"{'esta acima' if juro_real > 6 else 'esta proximo'} da media historica "
+        f"de longo prazo do pais (estimada entre 3% e 5% a.a.). "
+        f"{'Isso pressiona o credito, o investimento e o crescimento economico.' if juro_real > 6 else 'O nivel atual e compativel com ancoragem das expectativas de inflacao.'}"
     )
+
+    return "\n\n".join(linhas)
 
 
 def resumo_semana(dados):
