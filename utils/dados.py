@@ -40,8 +40,8 @@ def _coletar_sgs(series_dict, anos=10):
                         start=inicio.strftime("%Y-%m-%d"),
                         end=fim.strftime("%Y-%m-%d"))
             frames[nome] = s[nome].resample("MS").mean().round(4)
-        except Exception as e:
-            st.warning(f"Erro ao coletar {nome}: {e}")
+        except Exception:
+            pass  # serie indisponivel ou timeout
     if not frames:
         return pd.DataFrame()
     df = pd.DataFrame(frames).astype("float64")
