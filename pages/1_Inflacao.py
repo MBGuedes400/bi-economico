@@ -18,34 +18,19 @@ from utils.dados    import (get_inflacao, get_ipca_grupos,
                              ultimo_valor, focus_ultimo, METAS_BCB)
 from utils.graficos import grafico_ipca_focus, grafico_barras_grupos
 from utils.analise  import analisar_ipca
-from utils.layout   import rodape, CSS_GLOBAL
+from utils.layout   import rodape, CSS_GLOBAL, sidebar_padrao
 
 st.set_page_config(page_title="Inflação | BI Econômico",
                    page_icon="📊", layout="wide")
-
 st.markdown(CSS_GLOBAL, unsafe_allow_html=True)
 
 
 # -----------------------------------------------------------------------------
 # SIDEBAR
 # -----------------------------------------------------------------------------
-with st.sidebar:
-    import os as _os
-    _logo = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "Imagens", "impeto_Branco.png")
-    if _os.path.exists(_logo):
-        st.image(_logo, use_container_width=True)
-
-    st.markdown("---")
-    st.markdown("**Navegação**")
-    st.page_link("Home.py",                      label="🏠  Home")
-    st.page_link("pages/1_Inflacao.py",          label="📊  Inflação")
-    st.page_link("pages/2_Juros.py",             label="🏦  Juros")
-    st.page_link("pages/3_Atividade.py",         label="📈  Atividade Econômica")
-    st.page_link("pages/4_Mercado_Trabalho.py",  label="👷  Mercado de Trabalho")
-    st.page_link("pages/5_Setor_Externo.py",     label="🌎  Setor Externo")
-
-    st.markdown("---")
+def _filtros():
     st.markdown("**⚙️ Filtros — Inflação**")
+    global ano_ini, ano_fim, indices_sel, acum12m_toggle
     anos = list(range(2016, datetime.today().year + 1))
     ano_ini, ano_fim = st.select_slider(
         "Período", options=anos,
@@ -59,9 +44,13 @@ with st.sidebar:
     )
     acum12m_toggle = st.toggle("Acumulado 12m", value=True)
 
-    st.markdown("---")
-    st.caption("Fonte: BCB/SGS | IBGE/SIDRA | BCB/Focus")
-    st.caption("Atualizado automaticamente a cada hora.")
+# Inicializa com defaults antes da sidebar (evita NameError se sidebar não rodar)
+anos = list(range(2016, datetime.today().year + 1))
+ano_ini, ano_fim = 2021, datetime.today().year
+indices_sel    = ["IPCA","IGPM","INPC"]
+acum12m_toggle = True
+
+sidebar_padrao(filtros_extra=_filtros)
 
 
 # -----------------------------------------------------------------------------
@@ -143,12 +132,11 @@ st.markdown("---")
 
 
 # -----------------------------------------------------------------------------
-# GRÁFICO COMPARATIVO DE ÍNDICES (reage ao filtro da sidebar)
+# GRÁFICO COMPARATIVO DE ÍNDICES
 # -----------------------------------------------------------------------------
 if indices_sel:
     st.markdown("#### Comparativo de Índices Selecionados")
 
-    # Mapeamento de cores por índice
     CORES_IND = {
         "IPCA":    "#00D4FF",
         "IGPM":    "#FFB800",
@@ -171,7 +159,6 @@ if indices_sel:
                 ax_comp.plot(s.index, s.values,
                              color=CORES_IND.get(ind, "#AAAAAA"),
                              linewidth=2.0, label=ind)
-                # Anotação do último valor
                 ax_comp.annotate(
                     f"  {s.iloc[-1]:.2f}%",
                     xy=(s.index[-1], s.iloc[-1]),

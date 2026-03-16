@@ -16,6 +16,7 @@ from utils.dados import (
     METAS_BCB
 )
 from utils.analise import resumo_geral
+from utils.layout  import CSS_GLOBAL, rodape, sidebar_padrao
 
 st.set_page_config(
     page_title="BI Econômico",
@@ -23,66 +24,13 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-st.markdown("""
-<style>
-.stApp { background-color: #0F1117; color: #CCCCCC; }
-[data-testid="stSidebar"] { background-color: #1A1D27; }
-[data-testid="stMetric"] {
-    background-color: #1A1D27;
-    border: 1px solid #2A2D3A;
-    border-radius: 8px;
-    padding: 12px 16px;
-}
-[data-testid="stMetricValue"] { color: white; font-size: 1.6rem; }
-[data-testid="stMetricLabel"] { color: #AAAAAA; font-size: 0.8rem; }
-h1, h2, h3 { color: white; }
-.card-bloco {
-    background: #1A1D27;
-    border: 1px solid #2A2D3A;
-    border-radius: 10px;
-    padding: 16px;
-    margin-bottom: 10px;
-}
-/* Esconder menu nativo do Streamlit */
-[data-testid="stSidebarNav"],
-[data-testid="stSidebarNavItems"],
-[data-testid="stSidebarNavSeparator"] {
-    display: none !important;
-    visibility: hidden !important;
-    height: 0 !important;
-    overflow: hidden !important;
-}
-</style>
-""", unsafe_allow_html=True)
+st.markdown(CSS_GLOBAL, unsafe_allow_html=True)
 
 
 # -----------------------------------------------------------------------------
 # SIDEBAR
 # -----------------------------------------------------------------------------
-with st.sidebar:
-    import os
-    logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Imagens", "impeto_Branco.png")
-    if os.path.exists(logo_path):
-        st.image(logo_path, use_container_width=True)
-    else:
-        st.markdown("### 📊 BI Econômico")
-
-    st.markdown("---")
-    st.markdown("**Navegação**")
-    st.caption("Selecione uma análise abaixo:")
-
-    # Menu manual na posição correta
-    st.page_link("Home.py",                          label="🏠  Home")
-    st.page_link("pages/1_Inflacao.py",               label="📊  Inflação")
-    st.page_link("pages/2_Juros.py",                  label="🏦  Juros")
-    st.page_link("pages/3_Atividade.py",              label="📈  Atividade Econômica")
-    st.page_link("pages/4_Mercado_Trabalho.py",       label="👷  Mercado de Trabalho")
-    st.page_link("pages/5_Setor_Externo.py",          label="🌎  Setor Externo")
-
-    st.markdown("---")
-    st.caption("Fonte: BCB/SGS | IBGE/SIDRA | BCB/Focus")
-    st.caption("Atualizado automaticamente a cada hora.")
+sidebar_padrao()
 
 
 # -----------------------------------------------------------------------------
@@ -93,10 +41,9 @@ with st.spinner("Carregando indicadores..."):
     df_juros = get_juros()
     df_camb  = get_cambio()
     df_fa    = get_focus_anual()
-    # PNAD é lento — carrega separado com tratamento de erro
     try:
         df_pnad = get_pnad()
-    except:
+    except Exception:
         df_pnad = pd.DataFrame()
 
 
@@ -112,10 +59,8 @@ st.markdown(f"""
     </p>
 </div>
 """, unsafe_allow_html=True)
-
 st.markdown("---")
 
-# Resumo executivo
 resumo = resumo_geral(df_infl, df_juros, df_camb, df_pnad, df_fa)
 st.markdown(f"**Resumo:** {resumo}")
 st.markdown("---")
@@ -129,13 +74,12 @@ st.markdown("### Últimas leituras")
 ano_ref  = datetime.today().year
 meta_bcb = METAS_BCB.get(ano_ref, 3.0)
 
-ipca_v, _  = ultimo_valor(df_infl,  "IPCA_acum12m")
-selic_v, _ = ultimo_valor(df_juros, "Selic_Meta")
-cdi_v, _   = ultimo_valor(df_juros, "CDI")
-usd_v, _   = ultimo_valor(df_camb,  "USD_BRL")
+ipca_v,   _ = ultimo_valor(df_infl,  "IPCA_acum12m")
+selic_v,  _ = ultimo_valor(df_juros, "Selic_Meta")
+cdi_v,    _ = ultimo_valor(df_juros, "CDI")
+usd_v,    _ = ultimo_valor(df_camb,  "USD_BRL")
 desemp_v, _ = ultimo_valor(df_pnad,  "Taxa_Desocupacao")
 
-# Deltas
 def delta_v(df, col, n=1):
     if df is None or df.empty: return None
     if isinstance(df, pd.DataFrame):
@@ -216,24 +160,10 @@ with col5:
         </p></div>""", unsafe_allow_html=True)
 with col6:
     st.markdown("""<div class="card-bloco">
-        <h3>🔭 Expectativas Focus</h3>
+        <h3>📊 Comparativos</h3>
         <p style="color:#AAAAAA; font-size:0.9rem;">
-        Consenso de mercado para IPCA · Selic · PIB · Câmbio ·
-        Dispersão entre analistas · Evolução histórica.
+        Compare livremente indicadores de inflação · juros · câmbio ·
+        atividade · emprego · correlação e eixo duplo automático.
         </p></div>""", unsafe_allow_html=True)
 
-
-# -----------------------------------------------------------------------------
-# RODAPÉ
-# -----------------------------------------------------------------------------
-st.markdown("---")
-st.markdown("""
-<div style='text-align:center; padding: 0.5rem 0;'>
-    <p style='color:#555555; font-size:0.8rem; margin:0;'>
-        Dados: BCB/SGS · IBGE/SIDRA · BCB/Focus · Desenvolvido com Python + Streamlit
-    </p>
-    <p style='color:#444444; font-size:0.75rem; margin:4px 0 0;'>
-        Desenvolvido por <strong style="color:#666666;">Impeto Gestão e Negócios</strong>
-    </p>
-</div>
-""", unsafe_allow_html=True)
+rodape()

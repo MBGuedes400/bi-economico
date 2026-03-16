@@ -14,7 +14,7 @@ import matplotlib.dates as mdates
 from datetime import datetime
 
 from utils.dados  import get_pnad, get_caged, ultimo_valor
-from utils.layout import CSS_GLOBAL, rodape
+from utils.layout import CSS_GLOBAL, rodape, sidebar_padrao
 
 st.set_page_config(page_title="Mercado de Trabalho | BI Econômico",
                    page_icon="👷", layout="wide")
@@ -24,31 +24,18 @@ st.markdown(CSS_GLOBAL, unsafe_allow_html=True)
 # -----------------------------------------------------------------------------
 # SIDEBAR
 # -----------------------------------------------------------------------------
-with st.sidebar:
-    logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                             "Imagens", "impeto_Branco.png")
-    if os.path.exists(logo_path):
-        st.image(logo_path, use_container_width=True)
+ano_ini, ano_fim = 2019, datetime.today().year
 
-    st.markdown("---")
-    st.markdown("**Navegação**")
-    st.page_link("Home.py",                      label="🏠  Home")
-    st.page_link("pages/1_Inflacao.py",          label="📊  Inflação")
-    st.page_link("pages/2_Juros.py",             label="🏦  Juros")
-    st.page_link("pages/3_Atividade.py",         label="📈  Atividade Econômica")
-    st.page_link("pages/4_Mercado_Trabalho.py",  label="👷  Mercado de Trabalho")
-    st.page_link("pages/5_Setor_Externo.py",     label="🌎  Setor Externo")
-
-    st.markdown("---")
+def _filtros():
+    global ano_ini, ano_fim
     st.markdown("**⚙️ Filtros — Mercado de Trabalho**")
     anos = list(range(2015, datetime.today().year + 1))
     ano_ini, ano_fim = st.select_slider(
         "Período", options=anos,
         value=(2019, datetime.today().year)
     )
-    st.markdown("---")
-    st.caption("Fonte: IBGE/SIDRA (PNAD) | BCB/SGS (CAGED)")
-    st.caption("Atualizado automaticamente a cada hora.")
+
+sidebar_padrao(filtros_extra=_filtros)
 
 
 # -----------------------------------------------------------------------------
@@ -59,16 +46,11 @@ with st.spinner("Carregando dados de mercado de trabalho..."):
     df_caged = get_caged()
 
 # Filtrar período
-di    = pd.Timestamp(f"{ano_ini}-01-01")
-df_fim= pd.Timestamp(f"{ano_fim}-12-31")
+di     = pd.Timestamp(f"{ano_ini}-01-01")
+df_fim = pd.Timestamp(f"{ano_fim}-12-31")
 
-df_pnad_f = df_pnad[
-    (df_pnad.index >= di) & (df_pnad.index <= df_fim)
-] if not df_pnad.empty else df_pnad
-
-df_caged_f = df_caged[
-    (df_caged.index >= di) & (df_caged.index <= df_fim)
-] if not df_caged.empty else df_caged
+df_pnad_f  = df_pnad[(df_pnad.index >= di) & (df_pnad.index <= df_fim)] if not df_pnad.empty else df_pnad
+df_caged_f = df_caged[(df_caged.index >= di) & (df_caged.index <= df_fim)] if not df_caged.empty else df_caged
 
 
 # -----------------------------------------------------------------------------
@@ -88,11 +70,10 @@ st.markdown("---")
 # -----------------------------------------------------------------------------
 # KPI CARDS
 # -----------------------------------------------------------------------------
-desemp_v,  _ = ultimo_valor(df_pnad,  "Taxa_Desocupacao")
+desemp_v,   _ = ultimo_valor(df_pnad, "Taxa_Desocupacao")
 informal_v, _ = ultimo_valor(df_pnad, "Taxa_Informalidade")
-partic_v,  _ = ultimo_valor(df_pnad,  "Taxa_Participacao")
+partic_v,   _ = ultimo_valor(df_pnad, "Taxa_Participacao")
 
-# CAGED — saldo mensal (diferença mês a mês)
 def saldo_mensal(col):
     if df_caged.empty or col not in df_caged.columns: return None
     s = df_caged[col].dropna()
@@ -100,10 +81,9 @@ def saldo_mensal(col):
     return round(float(s.iloc[-1] - s.iloc[-2]), 0)
 
 caged_v = saldo_mensal("CAGED_Saldo")
-# Massa salarial — último valor direto (já é mensal em R$ milhões)
-massa_v = round(float(df_caged["Massa_Salarial"].dropna().iloc[-1]), 1) if not df_caged.empty and "Massa_Salarial" in df_caged.columns else None
+massa_v = (round(float(df_caged["Massa_Salarial"].dropna().iloc[-1]), 1)
+           if not df_caged.empty and "Massa_Salarial" in df_caged.columns else None)
 
-# Deltas vs trimestre anterior
 def delta_pnad(col, n=1):
     if df_pnad.empty or col not in df_pnad.columns: return None
     s = df_pnad[col].dropna()
@@ -114,18 +94,15 @@ c1, c2, c3, c4, c5 = st.columns(5)
 with c1:
     d = delta_pnad("Taxa_Desocupacao")
     st.metric("Desemprego", f"{desemp_v:.1f}%" if desemp_v else "—",
-              delta=f"{d:+.1f}pp" if d else None,
-              delta_color="inverse")
+              delta=f"{d:+.1f}pp" if d else None, delta_color="inverse")
 with c2:
     d = delta_pnad("Taxa_Informalidade")
     st.metric("Informalidade", f"{informal_v:.1f}%" if informal_v else "—",
-              delta=f"{d:+.1f}pp" if d else None,
-              delta_color="inverse")
+              delta=f"{d:+.1f}pp" if d else None, delta_color="inverse")
 with c3:
     d = delta_pnad("Taxa_Participacao")
     st.metric("Participação", f"{partic_v:.1f}%" if partic_v else "—",
-              delta=f"{d:+.1f}pp" if d else None,
-              delta_color="normal")
+              delta=f"{d:+.1f}pp" if d else None, delta_color="normal")
 with c4:
     st.metric("CAGED (saldo)", f"{caged_v:,.0f}" if caged_v else "—",
               delta="Empregos formais/mês", delta_color="off")
@@ -141,7 +118,6 @@ st.markdown("---")
 # -----------------------------------------------------------------------------
 col_g1, col_g2 = st.columns([6, 4])
 
-# Gráfico 1 — Desemprego e Informalidade históricos
 with col_g1:
     st.markdown("#### Taxa de Desocupação e Informalidade — PNAD Contínua")
 
@@ -152,8 +128,8 @@ with col_g1:
     if not df_pnad_f.empty:
         if "Taxa_Desocupacao" in df_pnad_f.columns:
             s = df_pnad_f["Taxa_Desocupacao"].dropna()
-            ax.plot(s.index, s.values, color="#FF4B6E",
-                    lw=2.5, label="Taxa de Desocupação (%)", zorder=5)
+            ax.plot(s.index, s.values, color="#FF4B6E", lw=2.5,
+                    label="Taxa de Desocupação (%)", zorder=5)
             ax.fill_between(s.index, s.values, alpha=0.1, color="#FF4B6E")
             if len(s) > 0:
                 ax.scatter(s.index[-1], s.iloc[-1], color="#FF4B6E", s=70, zorder=6)
@@ -176,41 +152,33 @@ with col_g1:
                                   xy=(s2.index[-1], s2.iloc[-1]),
                                   xytext=(8, -12), textcoords="offset points",
                                   color="#FFB800", fontsize=10, fontweight="bold")
-
-            # Legenda combinada
             lines1, labels1 = ax.get_legend_handles_labels()
             lines2, labels2 = ax2_twin.get_legend_handles_labels()
             ax.legend(lines1+lines2, labels1+labels2,
                       fontsize=8, facecolor="#1A1D27", edgecolor="#333",
                       labelcolor="#CCC", framealpha=0.9)
 
-    # Anotação — Pandemia COVID-19
     ax.axvspan(pd.Timestamp("2020-03-01"), pd.Timestamp("2020-12-01"),
                alpha=0.08, color="#FF4B6E")
-    ax.annotate(
-        "Pandemia\nCOVID-19",
-        xy=(pd.Timestamp("2020-07-01"), 1.0),
-        color="#FF4B6E", fontsize=7.5, alpha=0.8,
-        ha="center", va="bottom",
-        bbox=dict(boxstyle="round,pad=0.2", facecolor="#1A1D27",
-                  edgecolor="#FF4B6E", alpha=0.7)
-    )
+    ax.annotate("Pandemia\nCOVID-19",
+                xy=(pd.Timestamp("2020-07-01"), 1.0),
+                color="#FF4B6E", fontsize=7.5, alpha=0.8,
+                ha="center", va="bottom",
+                bbox=dict(boxstyle="round,pad=0.2", facecolor="#1A1D27",
+                          edgecolor="#FF4B6E", alpha=0.7))
 
-    # Anotação — Mínimo histórico do desemprego
     if not df_pnad_f.empty and "Taxa_Desocupacao" in df_pnad_f.columns:
         s_desemp = df_pnad_f["Taxa_Desocupacao"].dropna()
         if len(s_desemp) > 0:
             min_val = s_desemp.min()
             min_dt  = s_desemp.idxmin()
-            ax.annotate(
-                f"Mínimo\n{min_val:.1f}%",
-                xy=(min_dt, min_val),
-                xytext=(0, -35), textcoords="offset points",
-                color="#00D4AA", fontsize=7.5, ha="center",
-                arrowprops=dict(arrowstyle="->", color="#00D4AA", lw=1.0),
-                bbox=dict(boxstyle="round,pad=0.2", facecolor="#1A1D27",
-                          edgecolor="#00D4AA", alpha=0.7)
-            )
+            ax.annotate(f"Mínimo\n{min_val:.1f}%",
+                        xy=(min_dt, min_val),
+                        xytext=(0, -35), textcoords="offset points",
+                        color="#00D4AA", fontsize=7.5, ha="center",
+                        arrowprops=dict(arrowstyle="->", color="#00D4AA", lw=1.0),
+                        bbox=dict(boxstyle="round,pad=0.2", facecolor="#1A1D27",
+                                  edgecolor="#00D4AA", alpha=0.7))
 
     ax.grid(True, color="#FFF", alpha=0.05, lw=0.5)
     ax.tick_params(colors="#AAAAAA", labelsize=9)
@@ -223,7 +191,6 @@ with col_g1:
     st.pyplot(fig); plt.close()
 
 
-# Gráfico 2 — CAGED saldo mensal
 with col_g2:
     st.markdown("#### CAGED — Saldo de Empregos Formais")
 
@@ -232,20 +199,16 @@ with col_g2:
         fig2.patch.set_facecolor("#0F1117")
         ax2.set_facecolor("#0F1117")
 
-        s = df_caged_f["CAGED_Saldo"].dropna()
+        s    = df_caged_f["CAGED_Saldo"].dropna()
+        mm3  = s.rolling(3).mean()
         cores = ["#00D4AA" if v >= 0 else "#FF4B6E" for v in s.values]
         ax2.bar(s.index, s.values, width=25, color=cores, alpha=0.85)
-
-        # Média móvel 3m
-        mm3 = s.rolling(3).mean()
         ax2.plot(mm3.index, mm3.values, color="#FFB800",
                  lw=2.0, ls="--", label="Média móvel 3m")
         ax2.axhline(0, color="#555", lw=0.8)
-
         ax2.grid(True, color="#FFF", alpha=0.05, lw=0.5)
         ax2.tick_params(colors="#AAAAAA", labelsize=8)
-        ax2.yaxis.set_major_formatter(
-            mticker.FuncFormatter(lambda x, _: f"{x/1000:.0f}k"))
+        ax2.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x/1000:.0f}k"))
         ax2.xaxis.set_major_formatter(mdates.DateFormatter("%b/%y"))
         plt.xticks(rotation=30, ha="right")
         for sp in ax2.spines.values(): sp.set_edgecolor("#333")
@@ -271,41 +234,28 @@ with col_t:
     linhas = []
 
     if desemp_v is not None:
-        if desemp_v <= 7:
-            nivel = "em patamar baixo — mercado aquecido"
-        elif desemp_v <= 10:
-            nivel = "em patamar moderado"
-        elif desemp_v <= 13:
-            nivel = "em patamar elevado"
-        else:
-            nivel = "em patamar muito elevado — mercado deprimido"
-
+        nivel = ("em patamar baixo — mercado aquecido" if desemp_v <= 7
+                 else "em patamar moderado" if desemp_v <= 10
+                 else "em patamar elevado" if desemp_v <= 13
+                 else "em patamar muito elevado — mercado deprimido")
         d = delta_pnad("Taxa_Desocupacao")
         tend = f" ({d:+.1f}pp vs trimestre anterior)" if d else ""
-        linhas.append(
-            f"**[Desemprego]** A taxa de desocupação está em **{desemp_v:.1f}%**{tend} — {nivel}."
-        )
+        linhas.append(f"**[Desemprego]** A taxa de desocupação está em **{desemp_v:.1f}%**{tend} — {nivel}.")
 
     if informal_v is not None:
-        linhas.append(
-            f"**[Informalidade]** **{informal_v:.1f}%** dos trabalhadores ocupados "
-            f"estão em empregos informais — "
-            f"{'acima' if informal_v > 40 else 'próximo'} da média histórica."
-        )
+        linhas.append(f"**[Informalidade]** **{informal_v:.1f}%** dos trabalhadores ocupados "
+                      f"estão em empregos informais — "
+                      f"{'acima' if informal_v > 40 else 'próximo'} da média histórica.")
 
     if caged_v is not None:
         sinal = "positivo" if caged_v >= 0 else "negativo"
-        linhas.append(
-            f"**[CAGED]** O saldo de empregos formais no último mês foi de "
-            f"**{caged_v:+,.0f}** vagas — resultado {sinal}."
-        )
+        linhas.append(f"**[CAGED]** O saldo de empregos formais no último mês foi de "
+                      f"**{caged_v:+,.0f}** vagas — resultado {sinal}.")
 
     if partic_v is not None:
-        linhas.append(
-            f"**[Participação]** A taxa de participação na força de trabalho está em "
-            f"**{partic_v:.1f}%** — indica o percentual da população em idade ativa "
-            f"que está trabalhando ou buscando emprego."
-        )
+        linhas.append(f"**[Participação]** A taxa de participação na força de trabalho está em "
+                      f"**{partic_v:.1f}%** — indica o percentual da população em idade ativa "
+                      f"que está trabalhando ou buscando emprego.")
 
     for linha in linhas:
         st.markdown(linha)
@@ -316,11 +266,9 @@ with col_e:
         fig3, ax3 = plt.subplots(figsize=(6, 3.5))
         fig3.patch.set_facecolor("#0F1117")
         ax3.set_facecolor("#0F1117")
-
         s = df_pnad_f["Taxa_Participacao"].dropna()
         ax3.plot(s.index, s.values, color="#00D4FF", lw=2.0)
         ax3.fill_between(s.index, s.values, alpha=0.1, color="#00D4FF")
-
         ax3.grid(True, color="#FFF", alpha=0.05, lw=0.5)
         ax3.tick_params(colors="#AAAAAA", labelsize=8)
         ax3.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.1f%%"))

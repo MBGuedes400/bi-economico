@@ -15,7 +15,7 @@ from datetime import datetime
 
 from utils.dados   import get_juros, get_inflacao, get_focus_anual, ultimo_valor, METAS_BCB
 from utils.analise import analisar_juro_real
-from utils.layout  import CSS_GLOBAL, rodape
+from utils.layout  import CSS_GLOBAL, rodape, sidebar_padrao
 
 st.set_page_config(page_title="Juros | BI Econômico",
                    page_icon="🏦", layout="wide")
@@ -25,22 +25,11 @@ st.markdown(CSS_GLOBAL, unsafe_allow_html=True)
 # -----------------------------------------------------------------------------
 # SIDEBAR
 # -----------------------------------------------------------------------------
-with st.sidebar:
-    logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                             "Imagens", "impeto_Branco.png")
-    if os.path.exists(logo_path):
-        st.image(logo_path, use_container_width=True)
+ano_ini, ano_fim = 2019, datetime.today().year
+series_sel = ["Selic_Meta", "CDI", "Poupanca"]
 
-    st.markdown("---")
-    st.markdown("**Navegação**")
-    st.page_link("Home.py",                      label="🏠  Home")
-    st.page_link("pages/1_Inflacao.py",          label="📊  Inflação")
-    st.page_link("pages/2_Juros.py",             label="🏦  Juros")
-    st.page_link("pages/3_Atividade.py",         label="📈  Atividade Econômica")
-    st.page_link("pages/4_Mercado_Trabalho.py",  label="👷  Mercado de Trabalho")
-    st.page_link("pages/5_Setor_Externo.py",     label="🌎  Setor Externo")
-
-    st.markdown("---")
+def _filtros():
+    global ano_ini, ano_fim, series_sel
     st.markdown("**⚙️ Filtros — Juros**")
     anos = list(range(2010, datetime.today().year + 1))
     ano_ini, ano_fim = st.select_slider(
@@ -52,9 +41,8 @@ with st.sidebar:
         ["Selic_Meta", "CDI", "Poupanca"],
         default=["Selic_Meta", "CDI", "Poupanca"]
     )
-    st.markdown("---")
-    st.caption("Fonte: BCB/SGS | BCB/Focus")
-    st.caption("Atualizado automaticamente a cada hora.")
+
+sidebar_padrao(filtros_extra=_filtros)
 
 
 # -----------------------------------------------------------------------------
@@ -66,7 +54,7 @@ with st.spinner("Carregando dados de juros..."):
     df_fa    = get_focus_anual()
 
 # Filtrar período
-di = pd.Timestamp(f"{ano_ini}-01-01")
+di     = pd.Timestamp(f"{ano_ini}-01-01")
 df_fim = pd.Timestamp(f"{ano_fim}-12-31")
 df_j = df_juros[(df_juros.index >= di) & (df_juros.index <= df_fim)] if not df_juros.empty else df_juros
 df_i = df_infl[(df_infl.index >= di) & (df_infl.index <= df_fim)] if not df_infl.empty else df_infl
@@ -94,21 +82,19 @@ cdi_v,    _ = ultimo_valor(df_j, "CDI")
 poupc_v,  _ = ultimo_valor(df_j, "Poupanca")
 ipca_v,   _ = ultimo_valor(df_i, "IPCA_acum12m")
 
-# Juro real ex-post (Selic - IPCA acum12m)
 juro_real = None
 if selic_v and ipca_v:
     juro_real = round(((1 + selic_v/100) / (1 + ipca_v/100) - 1) * 100, 2)
 
-# Juro real ex-ante (Selic - Focus IPCA esperado)
 juro_exante = None
+focus_ipca  = None
 ano_at = datetime.today().year
 if not df_fa.empty and selic_v:
     f = df_fa[(df_fa["Indicador"]=="IPCA") & (df_fa["DataReferencia"]==str(ano_at))]
     if not f.empty:
-        focus_ipca = round(float(f.sort_values("Data").iloc[-1]["Mediana"]), 2)
+        focus_ipca  = round(float(f.sort_values("Data").iloc[-1]["Mediana"]), 2)
         juro_exante = round(((1 + selic_v/100) / (1 + focus_ipca/100) - 1) * 100, 2)
 
-# Selic Focus esperada
 selic_focus = None
 if not df_fa.empty:
     f = df_fa[(df_fa["Indicador"]=="Selic") & (df_fa["DataReferencia"]==str(ano_at))]
@@ -140,7 +126,6 @@ st.markdown("---")
 # -----------------------------------------------------------------------------
 col_g1, col_g2 = st.columns([6, 4])
 
-# Gráfico 1 — Selic histórica
 with col_g1:
     st.markdown("#### Selic Meta — Histórico e Ciclos")
 
@@ -153,23 +138,18 @@ with col_g1:
         ax.plot(s.index, s.values, color="#00D4FF", lw=2.5,
                 label="Selic Meta", zorder=5)
         ax.fill_between(s.index, s.values, alpha=0.08, color="#00D4FF")
-
-        # Anotação último valor
         ax.scatter(s.index[-1], s.iloc[-1], color="#00D4FF", s=70, zorder=6)
         ax.annotate(f"  {s.iloc[-1]:.2f}%",
                     xy=(s.index[-1], s.iloc[-1]),
                     xytext=(8, 4), textcoords="offset points",
                     color="#00D4FF", fontsize=10, fontweight="bold")
 
-    # Linha do juro real histórico
     if (not df_j.empty and "Selic_Meta" in df_j.columns and
             not df_i.empty and "IPCA_acum12m" in df_i.columns):
         selic_s = df_j["Selic_Meta"].dropna()
         ipca_s  = df_i["IPCA_acum12m"].dropna()
-        selic_df = selic_s.reset_index()
-        selic_df.columns = ["Data", "Selic"]
-        ipca_df  = ipca_s.reset_index()
-        ipca_df.columns  = ["Data", "IPCA"]
+        selic_df = selic_s.reset_index(); selic_df.columns = ["Data", "Selic"]
+        ipca_df  = ipca_s.reset_index();  ipca_df.columns  = ["Data", "IPCA"]
         df_merge = pd.merge(selic_df, ipca_df, on="Data", how="inner")
         if not df_merge.empty:
             df_merge["JuroReal"] = ((1 + df_merge["Selic"]/100) /
@@ -192,7 +172,6 @@ with col_g1:
     st.pyplot(fig); plt.close()
 
 
-# Gráfico 2 — Comparativo de séries
 with col_g2:
     st.markdown("#### Comparativo de Taxas")
 
@@ -200,22 +179,18 @@ with col_g2:
         "Selic_Meta": "#00D4FF",
         "CDI":        "#FFB800",
         "Poupanca":   "#00D4AA",
-        # TLP removida — série acumulada incompatível com taxa anual
     }
+    SERIES_MENSAIS = {"CDI", "Poupanca"}
 
     fig2, ax2 = plt.subplots(figsize=(7, 5))
     fig2.patch.set_facecolor("#0F1117")
     ax2.set_facecolor("#0F1117")
-
-    # Séries mensais que precisam ser convertidas para % a.a.
-    SERIES_MENSAIS = {"CDI", "Poupanca"}
 
     for serie in series_sel:
         if serie in df_j.columns:
             s = df_j[serie].dropna()
             if len(s) == 0:
                 continue
-            # Converter % a.m. → % a.a.
             if serie in SERIES_MENSAIS:
                 s = ((1 + s/100)**12 - 1) * 100
                 label = f"{serie.replace('_',' ')} (a.a.)"
@@ -236,7 +211,7 @@ with col_g2:
     ax2.xaxis.set_major_formatter(mdates.DateFormatter("%b/%y"))
     plt.xticks(rotation=30, ha="right")
     for sp in ax2.spines.values(): sp.set_edgecolor("#333")
-    ax2.set_title("Selic × CDI × Poupança × TLP",
+    ax2.set_title("Selic × CDI × Poupança",
                   color="white", fontsize=11, fontweight="bold", pad=12)
     ax2.legend(fontsize=8, facecolor="#1A1D27", edgecolor="#333",
                labelcolor="#CCC", framealpha=0.9)
@@ -253,7 +228,7 @@ col_t, col_e = st.columns([6, 4])
 
 with col_t:
     st.markdown("#### Análise Automática")
-    linhas = analisar_juro_real(selic_v, ipca_v, focus_ipca if 'focus_ipca' in dir() else None)
+    linhas = analisar_juro_real(selic_v, ipca_v, focus_ipca)
     st.markdown(linhas)
 
 with col_e:
@@ -262,7 +237,6 @@ with col_e:
     if not df_fa.empty:
         df_selic_focus = df_fa[df_fa["Indicador"] == "Selic"].copy()
         if not df_selic_focus.empty:
-            # Últimas expectativas por ano de referência
             anos_ref = sorted(df_selic_focus["DataReferencia"].unique())[-3:]
             for ar in anos_ref:
                 df_ar = df_selic_focus[df_selic_focus["DataReferencia"] == ar]
