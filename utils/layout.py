@@ -32,6 +32,7 @@ def sidebar_padrao(filtros_extra=None):
         st.page_link("pages/6_Comparativos.py",               label="📊  Comparativos")
         st.page_link("pages/7_Analises_Monetarias.py",        label="🔬  Análises Monetárias")
         st.page_link("pages/8_Analises_Reais.py",             label="🏗️  Análises Reais")
+        st.page_link("pages/9_Acuracia_Focus.py",             label="🎯  Acurácia Focus")
 
         st.markdown("---")
 
