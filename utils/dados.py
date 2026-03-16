@@ -328,6 +328,31 @@ def get_focus_anual():
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
+
+# -----------------------------------------------------------------------------
+# BLOCO TESOURO DIRETO
+# -----------------------------------------------------------------------------
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_tesouro_direto():
+    """Preços e taxas dos títulos do Tesouro Direto — Tesouro Transparente."""
+    url = ("https://www.tesourotransparente.gov.br/ckan/dataset/"
+           "df56aa42-484a-4a59-8184-7676580c81e3/resource/"
+           "796d2059-14e9-44e3-80c9-2d9e30b405c1/download/"
+           "precotaxatesourodireto.csv")
+    try:
+        sess = requests.Session()
+        sess.headers.update({"User-Agent": "Mozilla/5.0"})
+        resp = sess.get(url, timeout=60)
+        resp.raise_for_status()
+        from io import StringIO
+        df = pd.read_csv(StringIO(resp.text), sep=";", decimal=",", encoding="latin1")
+        df["Data Base"]       = pd.to_datetime(df["Data Base"],       dayfirst=True)
+        df["Data Vencimento"] = pd.to_datetime(df["Data Vencimento"], dayfirst=True)
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
 # -----------------------------------------------------------------------------
 # HELPERS
 # -----------------------------------------------------------------------------
