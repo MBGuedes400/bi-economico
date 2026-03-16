@@ -11,7 +11,6 @@ def sidebar_padrao(filtros_extra=None):
     filtros_extra: função opcional que adiciona filtros específicos da página.
     """
     with st.sidebar:
-        # Logo
         logo_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "Imagens", "impeto_Branco.png"
@@ -22,24 +21,24 @@ def sidebar_padrao(filtros_extra=None):
             st.markdown("### 📊 BI Econômico")
 
         st.markdown("---")
+        st.markdown("**Navegação**")
 
-        # Filtros específicos da página (se houver)
+        st.page_link("Home.py",                               label="🏠  Home")
+        st.page_link("pages/1_Inflacao.py",                   label="📊  Inflação")
+        st.page_link("pages/2_Juros.py",                      label="🏦  Juros")
+        st.page_link("pages/3_Atividade.py",                  label="📈  Atividade Econômica")
+        st.page_link("pages/4_Mercado_Trabalho.py",           label="👷  Mercado de Trabalho")
+        st.page_link("pages/5_Setor_Externo.py",              label="🌎  Setor Externo")
+        st.page_link("pages/6_Comparativos.py",               label="📊  Comparativos")
+        st.page_link("pages/7_Analises_Monetarias.py",        label="🔬  Análises Monetárias")
+        st.page_link("pages/8_Analises_Reais.py",             label="🏗️  Análises Reais")
+
+        st.markdown("---")
+
         if filtros_extra:
             filtros_extra()
             st.markdown("---")
 
-        st.markdown("**Navegação**")
-
-        # Menu manual — links para as páginas
-        import streamlit as _st
-        _st.page_link("Home.py",              label="🏠 Home")
-        _st.page_link("pages/1_Inflacao.py",  label="📊 Inflação")
-        _st.page_link("pages/2_Juros.py",     label="🏦 Juros")
-        _st.page_link("pages/3_Atividade.py", label="📈 Atividade Econômica")
-        _st.page_link("pages/4_Mercado_Trabalho.py", label="👷 Mercado de Trabalho")
-        _st.page_link("pages/5_Setor_Externo.py",    label="🌎 Setor Externo")
-
-        st.markdown("---")
         st.caption("Fonte: BCB/SGS | IBGE/SIDRA | BCB/Focus")
         st.caption("Atualizado automaticamente a cada hora.")
 
@@ -79,7 +78,6 @@ h1, h2, h3 { color: white; }
     padding: 16px;
     margin-bottom: 10px;
 }
-/* Ocultar menu nativo do Streamlit na sidebar */
 [data-testid="stSidebarNav"],
 [data-testid="stSidebarNavItems"],
 [data-testid="stSidebarNavSeparator"] {
