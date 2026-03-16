@@ -1,7 +1,5 @@
 # =============================================================================
 # utils/dados.py — Coleta e cache de todos os dados econômicos
-# Centraliza TODAS as chamadas de API em um único lugar.
-# Cada função usa @st.cache_data para evitar rebuscar a cada interação.
 # =============================================================================
 
 import streamlit as st
@@ -14,10 +12,6 @@ from dateutil.relativedelta import relativedelta
 import warnings
 warnings.filterwarnings('ignore')
 
-
-# -----------------------------------------------------------------------------
-# CONSTANTES GLOBAIS
-# -----------------------------------------------------------------------------
 METAS_BCB = {
     2019: 4.25, 2020: 4.0, 2021: 3.75,
     2022: 3.5,  2023: 3.25, 2024: 3.0,
@@ -27,25 +21,65 @@ TOLERANCIA_BCB = 1.5
 
 
 # -----------------------------------------------------------------------------
-# HELPER — COLETA BCB/SGS GENÉRICA
+# HELPERS DE COLETA
 # -----------------------------------------------------------------------------
+def _fetch_sgs_rest(cod, inicio_str, fim_str, timeout=60):
+    """Busca série via API REST do BCB com timeout explícito.
+    inicio_str / fim_str no formato DD/MM/YYYY."""
+    url = (f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{cod}/dados"
+           f"?formato=json&dataInicial={inicio_str}&dataFinal={fim_str}")
+    sess = requests.Session()
+    sess.headers.update({"User-Agent": "Mozilla/5.0"})
+    resp = sess.get(url, timeout=timeout)
+    resp.raise_for_status()
+    dados = resp.json()
+    if not dados:
+        return None
+    df = pd.DataFrame(dados)
+    df["data"]  = pd.to_datetime(df["data"], format="%d/%m/%Y")
+    df["valor"] = pd.to_numeric(
+        df["valor"].astype(str).str.replace(",", "."), errors="coerce")
+    s = df.set_index("data")["valor"].dropna()
+    s.index = pd.to_datetime(s.index)
+    return s.resample("MS").mean().round(4)
+
+
 def _coletar_sgs(series_dict, anos=10):
-    """Coleta séries do BCB/SGS e agrega para frequência mensal.
-    Tenta até 3 vezes por série para lidar com timeouts intermitentes."""
-    fim    = datetime.today()
-    inicio = fim - relativedelta(years=anos)
-    frames = {}
+    """Coleta séries do BCB/SGS.
+    Estratégia: API REST direta (timeout=60s, 3 tentativas) → fallback python-bcb."""
+    fim     = datetime.today()
+    inicio  = fim - relativedelta(years=anos)
+    ini_dmy = inicio.strftime("%d/%m/%Y")
+    fim_dmy = fim.strftime("%d/%m/%Y")
+    ini_ymd = inicio.strftime("%Y-%m-%d")
+    fim_ymd = fim.strftime("%Y-%m-%d")
+    frames  = {}
+
     for nome, cod in series_dict.items():
+        s = None
+        # 1) API REST com timeout explícito
         for tentativa in range(3):
             try:
-                s = sgs.get({nome: cod},
-                            start=inicio.strftime("%Y-%m-%d"),
-                            end=fim.strftime("%Y-%m-%d"))
-                frames[nome] = s[nome].resample("MS").mean().round(4)
-                break
+                s = _fetch_sgs_rest(cod, ini_dmy, fim_dmy, timeout=60)
+                if s is not None and not s.empty:
+                    break
+                s = None
             except Exception:
-                if tentativa == 2:
-                    pass
+                s = None
+
+        # 2) Fallback: python-bcb
+        if s is None:
+            for tentativa in range(2):
+                try:
+                    raw = sgs.get({nome: cod}, start=ini_ymd, end=fim_ymd)
+                    s   = raw[nome].resample("MS").mean().round(4)
+                    break
+                except Exception:
+                    s = None
+
+        if s is not None and not s.empty:
+            frames[nome] = s
+
     if not frames:
         return pd.DataFrame()
     df = pd.DataFrame(frames).astype("float64")
@@ -55,15 +89,13 @@ def _coletar_sgs(series_dict, anos=10):
 
 
 def _coletar_focus_odata(endpoint, filtro, select):
-    """Coleta dados do BCB/Focus via OData."""
     url = (f"https://olinda.bcb.gov.br/olinda/servico/Expectativas"
            f"/versao/v1/odata/{endpoint}"
            f"?$filter={filtro}&$select={select}&$format=json")
     try:
-        req  = requests.Request("GET", url)
-        prep = req.prepare()
-        prep.url = url
-        resp = requests.Session().send(prep, timeout=30)
+        sess = requests.Session()
+        sess.headers.update({"User-Agent": "Mozilla/5.0"})
+        resp = sess.get(url, timeout=30)
         resp.raise_for_status()
         return pd.DataFrame(resp.json().get("value", []))
     except Exception:
@@ -75,7 +107,6 @@ def _coletar_focus_odata(endpoint, filtro, select):
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_inflacao():
-    """IPCA, IGP-M, INPC e família completa — BCB/SGS."""
     SERIES = {
         "IPCA": 433, "INPC": 188, "IPCA_15": 189,
         "IGPM": 189, "IGP_DI": 190, "IGP_10": 7447,
@@ -94,7 +125,6 @@ def get_inflacao():
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_ipca_grupos():
-    """IPCA por 9 grupos de despesa — IBGE/SIDRA."""
     GRUPOS = {
         "7170": "Alimentação e bebidas", "7445": "Habitação",
         "7486": "Artigos de residência", "7558": "Vestuário",
@@ -126,7 +156,6 @@ def get_ipca_grupos():
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_juros():
-    """Selic, CDI, TLP, Poupança — BCB/SGS."""
     SERIES = {
         "Selic_Meta": 432,
         "Selic_Over": 1178,
@@ -138,11 +167,11 @@ def get_juros():
 
 
 # -----------------------------------------------------------------------------
-# BLOCO CÂMBIO — separado em 2 funções para evitar timeout no Cloud
+# BLOCO CÂMBIO — séries separadas para evitar timeout
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_cambio():
-    """USD, EUR, GBP, CNY — BCB/SGS. (ARS removida — escala incompatível)"""
+    """USD, EUR, GBP, CNY — via API REST BCB com timeout=60s."""
     SERIES = {
         "USD_BRL": 1,
         "EUR_BRL": 21619,
@@ -154,7 +183,7 @@ def get_cambio():
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_reservas():
-    """Reservas internacionais — BCB/SGS série 13621."""
+    """Reservas internacionais — série 13621 via API REST BCB."""
     return _coletar_sgs({"Reservas_USD_bi": 13621}, anos=10)
 
 
@@ -163,7 +192,6 @@ def get_reservas():
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_pnad():
-    """PNAD Contínua — desemprego, informalidade, participação — IBGE/SIDRA."""
     VARIAVEIS = {
         4099:  "Taxa_Desocupacao",
         12466: "Taxa_Informalidade",
@@ -203,7 +231,6 @@ def get_pnad():
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_caged():
-    """CAGED e Massa Salarial — BCB/SGS."""
     SERIES = {"CAGED_Saldo": 28763, "Massa_Salarial": 28195}
     return _coletar_sgs(SERIES, anos=8)
 
@@ -213,7 +240,6 @@ def get_caged():
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_pib():
-    """PIB por setor — IBGE/SIDRA tabela 1846."""
     SETORES = {
         "90707": "PIB_Total",       "90687": "Agropecuaria",
         "90691": "Industria",       "90696": "Servicos",
@@ -249,16 +275,14 @@ def get_pib():
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_ibcbr():
-    """IBC-Br — proxy mensal do PIB — BCB/SGS."""
     return _coletar_sgs({"IBC_Br": 24363}, anos=10)
 
 
 # -----------------------------------------------------------------------------
-# BLOCO FOCUS — EXPECTATIVAS
+# BLOCO FOCUS
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_focus_inflacao12m():
-    """IPCA e IGP-M esperados para os próximos 12 meses."""
     fim    = datetime.today()
     inicio = fim - relativedelta(years=4)
     fi, ff = inicio.strftime("%Y-%m-%d"), fim.strftime("%Y-%m-%d")
@@ -270,8 +294,8 @@ def get_focus_inflacao12m():
             "Indicador,Data,Mediana,Minimo,Maximo,numeroRespondentes"
         )
         if not df.empty:
-            df["Data"]    = pd.to_datetime(df["Data"])
-            df["Fonte"]   = "Inflacao12m"
+            df["Data"]  = pd.to_datetime(df["Data"])
+            df["Fonte"] = "Inflacao12m"
             for c in ["Mediana","Minimo","Maximo"]:
                 df[c] = pd.to_numeric(df[c], errors="coerce")
             frames.append(df)
@@ -280,7 +304,6 @@ def get_focus_inflacao12m():
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_focus_anual():
-    """Expectativas anuais — IPCA, Selic, PIB, Câmbio, Desemprego etc."""
     fim    = datetime.today()
     inicio = fim - relativedelta(years=4)
     fi, ff = inicio.strftime("%Y-%m-%d"), fim.strftime("%Y-%m-%d")
@@ -296,8 +319,8 @@ def get_focus_anual():
             "Indicador,Data,DataReferencia,Mediana,DesvioPadrao,Minimo,Maximo"
         )
         if not df.empty:
-            df["Data"]    = pd.to_datetime(df["Data"])
-            df["Fonte"]   = "Anual"
+            df["Data"]  = pd.to_datetime(df["Data"])
+            df["Fonte"] = "Anual"
             for c in ["Mediana","DesvioPadrao","Minimo","Maximo"]:
                 if c in df.columns:
                     df[c] = pd.to_numeric(df[c], errors="coerce")
@@ -309,7 +332,6 @@ def get_focus_anual():
 # HELPERS
 # -----------------------------------------------------------------------------
 def ultimo_valor(df, col):
-    """Retorna o último valor não-nulo de uma coluna."""
     if df is None or df.empty or col not in df.columns:
         return None, None
     s = df[col].dropna()
@@ -319,7 +341,6 @@ def ultimo_valor(df, col):
 
 
 def focus_ultimo(df_focus, indicador, fonte="Anual", ano=None):
-    """Retorna a última mediana Focus para um indicador."""
     if df_focus is None or df_focus.empty:
         return None
     f = df_focus[df_focus["Indicador"] == indicador]
