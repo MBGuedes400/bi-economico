@@ -14,7 +14,7 @@ import matplotlib.dates as mdates
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
-from utils.dados  import get_cambio, get_focus_anual, ultimo_valor, focus_ultimo
+from utils.dados  import get_cambio, get_reservas, get_focus_anual, ultimo_valor, focus_ultimo
 from utils.layout import CSS_GLOBAL, rodape
 
 st.set_page_config(page_title="Setor Externo | BI Econômico",
@@ -54,7 +54,6 @@ with st.sidebar:
         "EUR_BRL": "Euro (EUR)",
         "CNY_BRL": "Yuan (CNY)",
         "GBP_BRL": "Libra (GBP)",
-        "ARS_BRL": "Peso Arg. (ARS)",
     }
     moedas_sel = st.multiselect(
         "Moedas no gráfico",
@@ -72,8 +71,20 @@ with st.sidebar:
 # CARREGAR DADOS
 # -----------------------------------------------------------------------------
 with st.spinner("Carregando dados do Setor Externo..."):
-    df_cambio = get_cambio()
-    df_fa     = get_focus_anual()
+    df_cambio  = get_cambio()
+    df_reservas = get_reservas()
+    df_fa      = get_focus_anual()
+
+# Corrige escala das reservas (BCB retorna em US$ milhões)
+if not df_reservas.empty and "Reservas_USD_bi" in df_reservas.columns:
+    if df_reservas["Reservas_USD_bi"].dropna().median() > 10000:
+        df_reservas["Reservas_USD_bi"] = df_reservas["Reservas_USD_bi"] / 1000
+
+# Mescla câmbio + reservas num único df para compatibilidade
+if not df_cambio.empty and not df_reservas.empty:
+    df_cambio = df_cambio.join(df_reservas, how="outer")
+elif not df_reservas.empty:
+    df_cambio = df_reservas.copy()
 
 # Filtrar período
 di     = pd.Timestamp(f"{ano_ini}-01-01")
@@ -81,10 +92,6 @@ df_fim = pd.Timestamp(f"{ano_fim}-12-31")
 
 if not df_cambio.empty:
     df_cambio.index = pd.to_datetime(df_cambio.index)
-    # Série BCB 13621 retorna reservas em US$ milhões → converter para bilhões
-    if "Reservas_USD_bi" in df_cambio.columns:
-        if df_cambio["Reservas_USD_bi"].dropna().median() > 10000:
-            df_cambio["Reservas_USD_bi"] = df_cambio["Reservas_USD_bi"] / 1000
     df_c = df_cambio[(df_cambio.index >= di) & (df_cambio.index <= df_fim)].copy()
 else:
     df_c = pd.DataFrame()

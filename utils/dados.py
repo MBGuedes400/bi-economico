@@ -36,16 +36,16 @@ def _coletar_sgs(series_dict, anos=10):
     inicio = fim - relativedelta(years=anos)
     frames = {}
     for nome, cod in series_dict.items():
-        for tentativa in range(3):   # até 3 tentativas por série
+        for tentativa in range(3):
             try:
                 s = sgs.get({nome: cod},
                             start=inicio.strftime("%Y-%m-%d"),
                             end=fim.strftime("%Y-%m-%d"))
                 frames[nome] = s[nome].resample("MS").mean().round(4)
-                break  # sucesso — sai do loop de retry
+                break
             except Exception:
                 if tentativa == 2:
-                    pass  # esgotou tentativas — série ausente
+                    pass
     if not frames:
         return pd.DataFrame()
     df = pd.DataFrame(frames).astype("float64")
@@ -66,7 +66,7 @@ def _coletar_focus_odata(endpoint, filtro, select):
         resp = requests.Session().send(prep, timeout=30)
         resp.raise_for_status()
         return pd.DataFrame(resp.json().get("value", []))
-    except:
+    except Exception:
         return pd.DataFrame()
 
 
@@ -84,7 +84,6 @@ def get_inflacao():
     df = _coletar_sgs(SERIES, anos=10)
     if df.empty:
         return df
-    # Acumulado 12m
     def acum12m(s):
         return ((1 + s/100).rolling(12, min_periods=12)
                 .apply(np.prod, raw=True) - 1) * 100
@@ -118,7 +117,7 @@ def get_ipca_grupos():
             df["V"].astype(str).str.replace(",", "."), errors="coerce")
         df["Grupo"] = df["D4C"].map(GRUPOS)
         return df[["Data", "Grupo", "Valor"]].dropna()
-    except:
+    except Exception:
         return pd.DataFrame()
 
 
@@ -127,29 +126,36 @@ def get_ipca_grupos():
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_juros():
-    """Selic, CDI, TR, TLP, Poupança — BCB/SGS."""
+    """Selic, CDI, TLP, Poupança — BCB/SGS."""
     SERIES = {
-        "Selic_Meta": 432,    # Selic Meta — decisão COPOM (% a.a.)
-        "Selic_Over": 1178,   # Selic Over — taxa diária efetiva
-        "CDI":        4391,   # CDI mensal
-        "TLP":        27574,  # Taxa de Longo Prazo (BNDES)
-        "Poupanca":   196,    # Rendimento da poupança (% a.m.)
+        "Selic_Meta": 432,
+        "Selic_Over": 1178,
+        "CDI":        4391,
+        "TLP":        27574,
+        "Poupanca":   196,
     }
     return _coletar_sgs(SERIES, anos=10)
 
 
 # -----------------------------------------------------------------------------
-# BLOCO CÂMBIO
+# BLOCO CÂMBIO — separado em 2 funções para evitar timeout no Cloud
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_cambio():
-    """USD, EUR, GBP, ARS, CNY e Reservas — BCB/SGS."""
+    """USD, EUR, GBP, CNY — BCB/SGS. (ARS removida — escala incompatível)"""
     SERIES = {
-        "USD_BRL": 1,        "EUR_BRL": 21619,
-        "GBP_BRL": 21623,    "ARS_BRL": 21626,
-        "CNY_BRL": 21634,    "Reservas_USD_bi": 13621,
+        "USD_BRL": 1,
+        "EUR_BRL": 21619,
+        "GBP_BRL": 21623,
+        "CNY_BRL": 21634,
     }
     return _coletar_sgs(SERIES, anos=10)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_reservas():
+    """Reservas internacionais — BCB/SGS série 13621."""
+    return _coletar_sgs({"Reservas_USD_bi": 13621}, anos=10)
 
 
 # -----------------------------------------------------------------------------
@@ -172,7 +178,7 @@ def get_pnad():
         try:
             s = str(p)
             return datetime(int(s[:4]), (int(s[4:])-1)*3+1, 1)
-        except:
+        except Exception:
             return None
 
     frames = {}
@@ -188,7 +194,7 @@ def get_pnad():
             df = df[["Data", "Valor"]].dropna().rename(columns={"Valor": nome})
             df.sort_values("Data", inplace=True)
             frames[nome] = df.set_index("Data")[nome]
-        except:
+        except Exception:
             pass
     if not frames:
         return pd.DataFrame()
@@ -222,7 +228,7 @@ def get_pib():
         try:
             s = str(p)
             return datetime(int(s[:4]), (int(s[4:])-1)*3+1, 1)
-        except:
+        except Exception:
             return None
 
     url = (f"https://apisidra.ibge.gov.br/values/t/1846"
@@ -237,7 +243,7 @@ def get_pib():
         df["Valor"]  = pd.to_numeric(
             df["V"].astype(str).str.replace(",", "."), errors="coerce")
         return df[["Data","Setor","Valor"]].dropna()
-    except:
+    except Exception:
         return pd.DataFrame()
 
 
@@ -300,7 +306,7 @@ def get_focus_anual():
 
 
 # -----------------------------------------------------------------------------
-# HELPER — ÚLTIMO VALOR DE UMA SÉRIE
+# HELPERS
 # -----------------------------------------------------------------------------
 def ultimo_valor(df, col):
     """Retorna o último valor não-nulo de uma coluna."""
