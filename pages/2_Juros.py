@@ -162,7 +162,8 @@ with col_g1:
                     color="#00D4FF", fontsize=10, fontweight="bold")
 
     # Linha do juro real histórico
-    if not df_j.empty and not df_i.empty and "IPCA_acum12m" in df_i.columns:
+    if (not df_j.empty and "Selic_Meta" in df_j.columns and
+            not df_i.empty and "IPCA_acum12m" in df_i.columns):
         selic_s = df_j["Selic_Meta"].dropna()
         ipca_s  = df_i["IPCA_acum12m"].dropna()
         selic_df = selic_s.reset_index()
