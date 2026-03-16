@@ -30,18 +30,22 @@ TOLERANCIA_BCB = 1.5
 # HELPER — COLETA BCB/SGS GENÉRICA
 # -----------------------------------------------------------------------------
 def _coletar_sgs(series_dict, anos=10):
-    """Coleta séries do BCB/SGS e agrega para frequência mensal."""
+    """Coleta séries do BCB/SGS e agrega para frequência mensal.
+    Tenta até 3 vezes por série para lidar com timeouts intermitentes."""
     fim    = datetime.today()
     inicio = fim - relativedelta(years=anos)
     frames = {}
     for nome, cod in series_dict.items():
-        try:
-            s = sgs.get({nome: cod},
-                        start=inicio.strftime("%Y-%m-%d"),
-                        end=fim.strftime("%Y-%m-%d"))
-            frames[nome] = s[nome].resample("MS").mean().round(4)
-        except Exception:
-            pass  # serie indisponivel ou timeout
+        for tentativa in range(3):   # até 3 tentativas por série
+            try:
+                s = sgs.get({nome: cod},
+                            start=inicio.strftime("%Y-%m-%d"),
+                            end=fim.strftime("%Y-%m-%d"))
+                frames[nome] = s[nome].resample("MS").mean().round(4)
+                break  # sucesso — sai do loop de retry
+            except Exception:
+                if tentativa == 2:
+                    pass  # esgotou tentativas — série ausente
     if not frames:
         return pd.DataFrame()
     df = pd.DataFrame(frames).astype("float64")
@@ -123,30 +127,15 @@ def get_ipca_grupos():
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_juros():
-    """Selic, CDI, Poupanca — BCB/SGS — coleta serie por serie."""
+    """Selic, CDI, TR, TLP, Poupança — BCB/SGS."""
     SERIES = {
-        "Selic_Meta": 432,
-        "Selic_Over": 1178,
-        "CDI":        4391,
-        "Poupanca":   196,
+        "Selic_Meta": 432,    # Selic Meta — decisão COPOM (% a.a.)
+        "Selic_Over": 1178,   # Selic Over — taxa diária efetiva
+        "CDI":        4391,   # CDI mensal
+        "TLP":        27574,  # Taxa de Longo Prazo (BNDES)
+        "Poupanca":   196,    # Rendimento da poupança (% a.m.)
     }
-    fim    = datetime.today()
-    inicio = fim - relativedelta(years=10)
-    frames = {}
-    for nome, cod in SERIES.items():
-        try:
-            s = sgs.get({nome: cod},
-                        start=inicio.strftime("%Y-%m-%d"),
-                        end=fim.strftime("%Y-%m-%d"))
-            frames[nome] = s[nome].resample("MS").mean().round(4)
-        except Exception:
-            pass
-    if not frames:
-        return pd.DataFrame()
-    df = pd.DataFrame(frames).astype("float64")
-    df.index = pd.to_datetime(df.index)
-    df.ffill(inplace=True)
-    return df
+    return _coletar_sgs(SERIES, anos=10)
 
 
 # -----------------------------------------------------------------------------
