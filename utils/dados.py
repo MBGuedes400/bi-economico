@@ -418,12 +418,14 @@ def get_focus_anual():
 # Atualização mensal: rodar scripts/atualizar_dados.py localmente e fazer commit
 # -----------------------------------------------------------------------------
 def _parquet_path(nome):
-    """Resolve caminho do parquet tanto em dev local quanto no Streamlit Cloud."""
-    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base, "data", f"{nome}.parquet")
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
+    p1 = os.path.join(os.getcwd(), "data", f"{nome}.parquet")
+    if os.path.exists(p1):
+        return p1
+    p2 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", f"{nome}.parquet")
+    return os.path.normpath(p2)
+ 
+ 
+@st.cache_data(ttl=1, show_spinner=False)
 def get_ibovespa():
     """Ibovespa mensal + top ações diárias — lidos de data/ibovespa.parquet e data/acoes.parquet.
     Arquivos gerados por scripts/atualizar_dados.py (roda localmente com yfinance).
@@ -446,9 +448,9 @@ def get_ibovespa():
     except Exception:
         pass
     return df_ibov, df_acoes
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
+ 
+ 
+@st.cache_data(ttl=1, show_spinner=False)
 def get_commodities():
     """Commodities — lidas de data/commodities.parquet.
     Fonte: World Bank Pink Sheet (via scripts/atualizar_dados.py).
