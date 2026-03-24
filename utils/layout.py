@@ -114,8 +114,6 @@ def sidebar_padrao(pagina_atual=None, filtros_extra=None):
                 "<span style='color:#555;font-size:0.8rem;padding-left:8px'>"
                 "🚧 PIB Global — em breve</span>", unsafe_allow_html=True)
 
-        st.markdown("---")
-
         # Filtros da página
         if filtros_extra:
             filtros_extra()
