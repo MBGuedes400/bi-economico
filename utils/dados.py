@@ -414,35 +414,29 @@ def get_focus_anual():
 
 
 # -----------------------------------------------------------------------------
-# BLOCO MERCADO FINANCEIRO — yfinance
+# BLOCO MERCADO FINANCEIRO — stooq.com (cloud-safe, sem API key)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_ibovespa():
-    """Ibovespa histórico via BCB/SGS série 7845 (cloud-safe).
-    Ações individuais retornam DataFrame vazio — yfinance bloqueado no Streamlit Cloud.
-    Fonte: https://api.bcb.gov.br/dados/serie/bcdata.sgs.7845/dados
+    """Ibovespa via stooq.com — ticker ^bvsp, frequência mensal (i=m).
+    Ações individuais retornam DataFrame vazio — sem fonte cloud-safe disponível.
     """
-    fim    = datetime.today()
-    inicio = fim - relativedelta(years=10)
-    ini_dmy = inicio.strftime("%d/%m/%Y")
-    fim_dmy = fim.strftime("%d/%m/%Y")
-
-    s = _fetch_sgs_rest(7845, ini_dmy, fim_dmy, timeout=60)
-    if s is None or s.empty:
+    try:
+        url = "https://stooq.com/q/d/l/?s=^bvsp&i=m"
+        df  = pd.read_csv(url, parse_dates=["Date"])
+        df  = df.dropna(subset=["Close"])
+        s   = df.set_index("Date")["Close"].rename("Ibovespa")
+        s.index = pd.to_datetime(s.index)
+        return s.sort_index().to_frame(), pd.DataFrame()
+    except Exception:
         return pd.DataFrame(), pd.DataFrame()
-
-    ibov_m = s.rename("Ibovespa").to_frame()
-    ibov_m.index = pd.to_datetime(ibov_m.index)
-    return ibov_m, pd.DataFrame()
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_commodities():
     """Commodities via stooq.com (cloud-safe, sem API key).
-    Cada commodity é buscada individualmente — falha isolada não derruba as demais.
-    Frequência mensal (i=m). Resample MS + last() para alinhar ao padrão do projeto.
-    Tickers stooq: cl.f=Petróleo WTI, xauusd=Ouro, zs.f=Soja, zc.f=Milho,
-                   zw.f=Trigo, kc.f=Café, sb.f=Açúcar
+    Tickers CBOT em USD: zs.f=Soja, zc.f=Milho, zw.f=Trigo (bolsa Chicago).
+    Frequência mensal (i=m). Falha isolada por ticker não derruba as demais.
     """
     TICKERS = {
         "Petroleo": "cl.f",
@@ -453,27 +447,22 @@ def get_commodities():
         "Cafe":     "kc.f",
         "Acucar":   "sb.f",
     }
-    fim    = datetime.today()
-    inicio = fim - relativedelta(years=10)
-
     frames = {}
     for nome, ticker in TICKERS.items():
-        url = f"https://stooq.com/q/d/l/?s={ticker}&i=m"
         try:
-            df = pd.read_csv(url, parse_dates=["Date"])
-            df = df.dropna(subset=["Close"])
-            df = df[df["Date"] >= pd.Timestamp(inicio)]
-            s  = df.set_index("Date")["Close"].resample("MS").last().round(2)
+            url = f"https://stooq.com/q/d/l/?s={ticker}&i=m"
+            df  = pd.read_csv(url, parse_dates=["Date"])
+            df  = df.dropna(subset=["Close"])
+            s   = df.set_index("Date")["Close"].rename(nome)
             if not s.empty:
-                frames[nome] = s
+                frames[nome] = s.sort_index().round(2)
         except Exception:
             pass
-
     if not frames:
         return pd.DataFrame()
     df_out = pd.DataFrame(frames)
     df_out.index = pd.to_datetime(df_out.index)
-    return df_out
+    return df_out.sort_index()
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
