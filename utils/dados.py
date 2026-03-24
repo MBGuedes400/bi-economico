@@ -720,9 +720,7 @@ def get_industria_indicadores():
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_pmc():
-    """Pesquisa Mensal de Comércio — IBGE SIDRA tabela 8880 (base 2022=100).
-    Classificador c11046/allxt necessário para retornar valores não nulos.
-    """
+    """Pesquisa Mensal de Comércio — IBGE SIDRA tabela 8880 (base 2022=100)."""
     VARS = {
         "7169":  "Indice",
         "11709": "VarMensal",
