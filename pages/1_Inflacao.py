@@ -50,7 +50,7 @@ ano_ini, ano_fim = 2021, datetime.today().year
 indices_sel    = ["IPCA","IGPM","INPC"]
 acum12m_toggle = True
 
-sidebar_padrao(filtros_extra=_filtros)
+sidebar_padrao(pagina_atual="Inflacao", filtros_extra=_filtros)
 
 
 # -----------------------------------------------------------------------------
@@ -231,7 +231,7 @@ with col_e:
         v = foc_anual("Selic", ano_at)
         st.metric(f"Selic {ano_at}", f"{v:.2f}%" if v else "—",
                   delta="Taxa básica", delta_color="off")
-        v = foc_anual("Câmbio", ano_at)
+        v = foc_anual("Cambio", ano_at)   # sem acento — nome na API BCB
         st.metric(f"Câmbio {ano_at}", f"R$ {v:.2f}" if v else "—",
                   delta="USD/BRL", delta_color="off")
     st.caption("BCB/Focus — mediana · última coleta disponível")

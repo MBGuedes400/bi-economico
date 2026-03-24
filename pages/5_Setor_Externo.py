@@ -49,7 +49,7 @@ def _filtros():
         format_func=lambda x: moedas_disp[x],
     )
 
-sidebar_padrao(filtros_extra=_filtros)
+sidebar_padrao(pagina_atual="Setor_Externo", filtros_extra=_filtros)
 
 
 # -----------------------------------------------------------------------------
@@ -114,8 +114,8 @@ def var_periodo(df, col, n=1):
 
 var_usd = var_periodo(df_cambio, "USD_BRL", 1)
 var_res = var_periodo(df_cambio, "Reservas_USD_bi", 1)
-fc_at   = focus_ultimo(df_fa, "Câmbio", "Anual", ano_at)
-fc_prx  = focus_ultimo(df_fa, "Câmbio", "Anual", ano_at + 1)
+fc_at   = focus_ultimo(df_fa, "Cambio", "Anual", ano_at)
+fc_prx  = focus_ultimo(df_fa, "Cambio", "Anual", ano_at + 1)
 
 c1, c2, c3, c4, c5 = st.columns(5)
 with c1:
@@ -269,7 +269,7 @@ with col_t:
 with col_e:
     st.markdown("#### Expectativas Focus — Câmbio")
     if not df_fa.empty:
-        df_cam_fa = df_fa[df_fa["Indicador"] == "Câmbio"].copy()
+        df_cam_fa = df_fa[df_fa["Indicador"] == "Cambio"].copy()  # alias interno sem acento
         if not df_cam_fa.empty:
             anos_ref = [a for a in sorted(df_cam_fa["DataReferencia"].unique())
                         if int(a) >= ano_at][:3]
@@ -279,6 +279,8 @@ with col_e:
                     v = round(float(df_ar.sort_values("Data").iloc[-1]["Mediana"]), 2)
                     st.metric(f"Câmbio {ar}", f"R$ {v:.2f}",
                               delta="USD/BRL esperado", delta_color="off")
+        else:
+            st.info("Expectativas de câmbio não disponíveis.")
     st.caption("BCB/Focus — mediana · última coleta disponível")
 
 rodape()

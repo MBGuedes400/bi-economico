@@ -44,7 +44,7 @@ def _filtros():
         index=0
     )
 
-sidebar_padrao(filtros_extra=_filtros)
+sidebar_padrao(pagina_atual="Analises_Monetarias", filtros_extra=_filtros)
 
 
 # -----------------------------------------------------------------------------
@@ -217,6 +217,20 @@ if mostrar:
                 unsafe_allow_html=True
             )
 
+        st.markdown("---")
+        st.markdown("**O que é e por que importa?**")
+        st.markdown(
+            "O **juro nominal** (Selic) é o que o banco cobra ou paga. "
+            "Mas o que efetivamente restringe ou estimula a economia é o **juro real** — "
+            "o retorno acima da inflação.\n\n"
+            "- **Ex-post** usa o IPCA já realizado — mostra o que *aconteceu*\n"
+            "- **Ex-ante** usa a expectativa Focus — mostra o que o mercado *espera* receber\n\n"
+            "Quando o juro real é muito elevado (acima de 6%), o crédito encarece, "
+            "o investimento recua e o consumo cai — isso derruba a inflação, mas também o crescimento. "
+            "O Brasil historicamente opera com um dos maiores juros reais do mundo, "
+            "reflexo de risco fiscal, prêmio de risco e memória inflacionária."
+        )
+
     st.markdown("---")
 
 
@@ -290,6 +304,37 @@ if mostrar:
         st.caption("Núcleos acima da meta sinalizam inflação persistente — "
                    "difícil de combater apenas com juros.")
 
+        # Análise dinâmica dos núcleos
+        nucleos_vals = {col: ultimo_valor(df_nucleos, col)[0]
+                        for col in LABELS_NUC if ultimo_valor(df_nucleos, col)[0]}
+        meta_bcb = METAS_BCB.get(datetime.today().year, 3.0)
+        if nucleos_vals:
+            media_nuc = round(sum(nucleos_vals.values()) / len(nucleos_vals), 2)
+            acima = sum(1 for v in nucleos_vals.values() if v > meta_bcb)
+            total = len(nucleos_vals)
+            cor_nuc = "#FF4B6E" if acima == total else "#FFB800" if acima > 0 else "#00D4AA"
+            st.markdown("---")
+            st.markdown(
+                f"**Leitura dos núcleos:** média de **{media_nuc:.2f}%** a.m. — "
+                f"**{acima} de {total}** núcleos estão acima da meta de {meta_bcb:.1f}%. "
+                + ("Inflação **persistente e disseminada**: o COPOM tende a manter postura contracionista." if acima == total
+                   else "Núcleos **parcialmente acima da meta**: atenção à tendência." if acima > 0
+                   else "Núcleos **abaixo da meta**: pressão inflacionária arrefecendo.")
+            )
+
+        st.markdown("---")
+        st.markdown("**O que são os núcleos de inflação?**")
+        st.markdown(
+            "O IPCA cheio inclui itens muito voláteis — como energia elétrica, combustíveis e alimentos sazonais. "
+            "Os **núcleos** removem esses ruídos e revelam a **tendência subjacente** da inflação:\n\n"
+            "- **EX0:** exclui alimentação no domicílio e energia elétrica residencial\n"
+            "- **MS (Médias aparadas):** descarta os itens de maior alta e maior queda — reduz o impacto de choques pontuais\n"
+            "- **P55 (Percentil 55):** substitui cada preço pela mediana ponderada — robusto a outliers\n"
+            "- **Dupla ponderação:** combina peso na cesta com persistência do item\n\n"
+            "Quando os núcleos persistem acima da meta, o BCB entende que a inflação não é passageira — "
+            "e tende a manter ou elevar os juros."
+        )
+
     st.markdown("---")
 
 
@@ -357,6 +402,21 @@ if mostrar:
                 )
             st.caption("Leitura acima de 50%: mais itens subindo do que caindo. "
                        "Acima de 60% sinaliza inflação disseminada.")
+
+            st.markdown("---")
+            st.markdown("**O que é e como usar?**")
+            st.markdown(
+                "O **índice de difusão** mede o *quanto* a inflação está espalhada pela economia — "
+                "independente da magnitude. Um IPCA de 0,5% pode ser muito diferente dependendo da difusão:\n\n"
+                "- Difusão **alta (>60%)**: muitos itens subindo ao mesmo tempo → inflação generalizada, "
+                "mais difícil de conter com política monetária pontual\n"
+                "- Difusão **média (45–60%)**: equilíbrio — inflação concentrada em alguns setores\n"
+                "- Difusão **baixa (<45%)**: poucos itens puxando o índice → choque pontual, "
+                "tende a se dissipar sozinho\n\n"
+                "O BCB acompanha a difusão junto com os núcleos para distinguir entre "
+                "**inflação estrutural** (que exige resposta de juros) e "
+                "**choques temporários** (que podem ser tolerados)."
+            )
     else:
         st.warning("Série de difusão (BCB 21379) não disponível. Pode não estar acessível no Cloud.")
 
@@ -370,7 +430,6 @@ mostrar = bloco_sel in ("Todos", "Phillips")
 if mostrar:
     st.markdown("### 📉 Curva de Phillips — Inflação × Desemprego")
     st.caption("Relação inversa clássica: desemprego baixo → pressão inflacionária · alto → desinflação")
-
     ipca_mensal = pd.Series(dtype=float)
     desemprego  = pd.Series(dtype=float)
 
@@ -469,6 +528,35 @@ if mostrar:
                        labelcolor="#CCC", framealpha=0.9)
             plt.tight_layout()
             st.pyplot(fig2); plt.close()
+
+    # Análise dinâmica e didática — Curva de Phillips
+    des_v, _  = ultimo_valor(df_pnad, "Taxa_Desocupacao") if not df_pnad.empty else (None, None)
+    ipca_v, _ = ultimo_valor(df_infl, "IPCA_acum12m")    if not df_infl.empty else (None, None)
+    if des_v and ipca_v:
+        if des_v < 7 and ipca_v > 5:
+            leitura_ph = (f"Com desemprego em **{des_v:.1f}%** e IPCA em **{ipca_v:.1f}%**, "
+                          "o mercado de trabalho aquecido está **pressionando a inflação** — "
+                          "consistente com Phillips. O BCB tende a manter juros elevados.")
+        elif des_v < 7 and ipca_v <= 5:
+            leitura_ph = (f"Desemprego baixo (**{des_v:.1f}%**) com inflação controlada (**{ipca_v:.1f}%**) — "
+                          "situação favorável. A curva pode estar **menos inclinada** no Brasil atual.")
+        elif des_v >= 7 and ipca_v > 5:
+            leitura_ph = (f"Desemprego elevado (**{des_v:.1f}%**) com inflação alta (**{ipca_v:.1f}%**) — "
+                          "**estagflação**: Phillips não explica sozinho. "
+                          "Choques de câmbio e energia costumam ser o fator dominante.")
+        else:
+            leitura_ph = (f"Desemprego em **{des_v:.1f}%** e IPCA em **{ipca_v:.1f}%** — "
+                          "desinflação com mercado de trabalho normalizado.")
+        st.info(f"**Leitura atual:** {leitura_ph}")
+
+    st.markdown("**O que é a Curva de Phillips?**")
+    st.markdown(
+        "A teoria de Phillips (1958) propõe uma **relação inversa** entre desemprego e inflação: "
+        "quando o desemprego cai, os salários sobem, o consumo aumenta e os preços sobem. "
+        "No Brasil essa relação existe, mas é **não-linear e instável** — câmbio, preços "
+        "administrados e expectativas frequentemente dominam o efeito do mercado de trabalho. "
+        "O gráfico colorido por ano revela exatamente isso: cada período tem sua própria dinâmica."
+    )
 
     st.markdown("---")
 
@@ -574,6 +662,38 @@ if mostrar:
                        labelcolor="#CCC", framealpha=0.9)
             plt.tight_layout()
             st.pyplot(fig2); plt.close()
+
+    # Análise dinâmica — pass-through
+    usd_v, _  = ultimo_valor(df_camb, "USD_BRL")    if not df_camb.empty  else (None, None)
+    ipca_v, _ = ultimo_valor(df_infl, "IPCA_acum12m") if not df_infl.empty else (None, None)
+    if usd_v and ipca_v:
+        nivel_cambio = "depreciado" if usd_v > 5.5 else "apreciado" if usd_v < 4.8 else "neutro"
+        if nivel_cambio == "depreciado" and ipca_v > 5:
+            leitura_pt = (f"Com dólar em **R$ {usd_v:.2f}** (câmbio {nivel_cambio}) e IPCA em "
+                          f"**{ipca_v:.1f}%**, o pass-through cambial está **ativo** — "
+                          "a depreciação já se reflete na inflação via importados e combustíveis.")
+        elif nivel_cambio == "depreciado" and ipca_v <= 5:
+            leitura_pt = (f"Câmbio {nivel_cambio} (**R$ {usd_v:.2f}**) mas IPCA ainda controlado (**{ipca_v:.1f}%**) — "
+                          "o pass-through pode ter defasagem ou estar sendo absorvido pelas margens.")
+        elif nivel_cambio == "apreciado":
+            leitura_pt = (f"Câmbio {nivel_cambio} (**R$ {usd_v:.2f}**) tende a **reduzir** a pressão "
+                          f"inflacionária via importados. IPCA atual: {ipca_v:.1f}%.")
+        else:
+            leitura_pt = f"Câmbio em nível neutro (**R$ {usd_v:.2f}**). IPCA: {ipca_v:.1f}%."
+        st.info(f"**Leitura atual:** {leitura_pt}")
+
+    st.markdown("**O que é o pass-through cambial?**")
+    st.markdown(
+        "O **pass-through cambial** mede o quanto uma variação no dólar se transmite para os preços "
+        "domésticos. O mecanismo funciona em cascata:\n\n"
+        "**Dólar sobe →** importações encarecem → custos industriais sobem → preço ao consumidor sobe\n\n"
+        "O efeito não é instantâneo — há **defasagens** de 1 a 9 meses dependendo do setor. "
+        "Combustíveis respondem mais rápido (1–3 meses). Bens industrializados, 3–6 meses. "
+        "Serviços, mais lentamente.\n\n"
+        "O gráfico de correlação por defasagem mostra exatamente em qual mês o impacto do câmbio "
+        "sobre o IPCA é mais forte no período selecionado — um dado essencial para o COPOM "
+        "calibrar o timing das decisões de juros."
+    )
 
     st.markdown("---")
 

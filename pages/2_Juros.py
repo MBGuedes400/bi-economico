@@ -42,7 +42,7 @@ def _filtros():
         default=["Selic_Meta", "CDI", "Poupanca"]
     )
 
-sidebar_padrao(filtros_extra=_filtros)
+sidebar_padrao(pagina_atual="Juros", filtros_extra=_filtros)
 
 
 # -----------------------------------------------------------------------------

@@ -39,7 +39,7 @@ def _filtros():
     )
     anos_janela = st.slider("Anos de histórico", 2, 6, 4)
 
-sidebar_padrao(filtros_extra=_filtros)
+sidebar_padrao(pagina_atual="Acuracia_Focus", filtros_extra=_filtros)
 
 
 # -----------------------------------------------------------------------------
@@ -53,32 +53,28 @@ with st.spinner("Carregando dados realizados..."):
     df_juros = get_juros()
     df_camb  = get_cambio()
     df_res   = get_reservas()
-    # Corrige reservas
     if not df_res.empty and "Reservas_USD_bi" in df_res.columns:
         if df_res["Reservas_USD_bi"].dropna().median() > 10000:
             df_res["Reservas_USD_bi"] = df_res["Reservas_USD_bi"] / 1000
-    # Mescla câmbio
     if not df_camb.empty and not df_res.empty:
         df_camb = df_camb.join(df_res, how="outer")
 
 
-# -----------------------------------------------------------------------------
-# MAPEAMENTO: indicador → série realizada
-# -----------------------------------------------------------------------------
+# Mapas definidos APOS sidebar — garante que indicador_sel ja foi atualizado
 MAP_REALIZADO = {
     "IPCA":   (df_infl,  "IPCA_acum12m"),
     "Selic":  (df_juros, "Selic_Meta"),
-    "Câmbio": (df_camb,  "USD_BRL"),
+    "C\u00e2mbio": (df_camb, "USD_BRL"),
 }
 MAP_FOCO_IND = {
     "IPCA":   "IPCA",
     "Selic":  "Selic",
-    "Câmbio": "Câmbio",
+    "C\u00e2mbio": "Cambio",
 }
 MAP_UNIDADE = {
     "IPCA":   "% a.a.",
     "Selic":  "% a.a.",
-    "Câmbio": "R$/USD",
+    "C\u00e2mbio": "R$/USD",
 }
 
 
@@ -100,10 +96,9 @@ st.markdown("---")
 # MONTA SÉRIE DE PROJEÇÕES vs REALIZADO
 # -----------------------------------------------------------------------------
 def montar_serie_acuracia(df_focus, ind_focus, df_real, col_real, anos=4):
-    """
-    Para cada ano de referência disponível no Focus, pega a mediana
-    projetada no início do ano (jan) e compara com o realizado no final (dez).
-    Retorna DataFrame com colunas: Ano, Projetado, Realizado, Erro, Min, Max.
+    """Para cada ano de referência, pega a mediana Focus coletada em jan-mar
+    e compara com o realizado no final do ano.
+    Retorna DataFrame com: Ano, Projetado, Realizado, Erro, Min, Max.
     """
     if df_focus is None or df_focus.empty: return pd.DataFrame()
     if df_real  is None or df_real.empty:  return pd.DataFrame()
@@ -116,7 +111,6 @@ def montar_serie_acuracia(df_focus, ind_focus, df_real, col_real, anos=4):
 
     rows = []
     for ano in anos_ref:
-        # Projeção: mediana Focus coletada em janeiro do ano (±2 meses)
         jan_ini = pd.Timestamp(f"{ano}-01-01")
         jan_fim = pd.Timestamp(f"{ano}-03-31")
         df_jan  = df_ind[
@@ -128,23 +122,21 @@ def montar_serie_acuracia(df_focus, ind_focus, df_real, col_real, anos=4):
         if df_jan.empty:
             continue
 
-        proj     = round(float(df_jan.sort_values("Data").iloc[-1]["Mediana"]), 2)
-        proj_min = round(float(df_jan["Minimo"].dropna().mean()),  2) if "Minimo" in df_jan else None
-        proj_max = round(float(df_jan["Maximo"].dropna().mean()),  2) if "Maximo" in df_jan else None
+        # Pega a projeção mais recente do período jan-mar — um único registro
+        ultimo = df_jan.sort_values("Data").iloc[-1]
+        proj     = round(float(ultimo["Mediana"]), 2)
+        proj_min = round(float(df_jan["Minimo"].dropna().mean()), 2) if "Minimo" in df_jan.columns and df_jan["Minimo"].notna().any() else None
+        proj_max = round(float(df_jan["Maximo"].dropna().mean()), 2) if "Maximo" in df_jan.columns and df_jan["Maximo"].notna().any() else None
 
-        # Realizado: último valor disponível do ano
-        if isinstance(df_real.index, pd.DatetimeIndex):
-            df_ano = df_real[
-                (df_real.index.year == ano) & (col_real in df_real.columns)
-            ]
-        else:
+        # Realizado: último valor do ano na série histórica
+        if not isinstance(df_real.index, pd.DatetimeIndex):
+            continue
+        if col_real not in df_real.columns:
             continue
 
-        if df_ano.empty or col_real not in df_ano.columns:
+        s_ano = df_real.loc[df_real.index.year == ano, col_real].dropna()
+        if s_ano.empty:
             continue
-
-        s_ano = df_ano[col_real].dropna()
-        if s_ano.empty: continue
 
         realizado = round(float(s_ano.iloc[-1]), 2)
         erro      = round(proj - realizado, 2)
@@ -158,7 +150,11 @@ def montar_serie_acuracia(df_focus, ind_focus, df_real, col_real, anos=4):
             "Max":       proj_max,
         })
 
-    return pd.DataFrame(rows)
+    df_out = pd.DataFrame(rows)
+    # Garante um registro por ano (elimina eventuais duplicatas)
+    if not df_out.empty:
+        df_out = df_out.drop_duplicates(subset=["Ano"]).sort_values("Ano").reset_index(drop=True)
+    return df_out
 
 
 ind_focus = MAP_FOCO_IND[indicador_sel]
@@ -270,59 +266,67 @@ with col_g1:
 
 with col_g2:
     st.markdown("#### Como o mercado errou?")
-    st.caption(
-        "🔴 **Otimista:** projetou **acima** do realizado (erro > +0.3) — "
-        "o resultado foi melhor que o esperado. "
-        "🟢 **Pessimista:** projetou **abaixo** do realizado (erro < −0.3) — "
-        "o resultado foi pior que o esperado. "
-        "🟡 **Neutro:** erro dentro de ±0.3 — projeção essencialmente acertada."
-    )
 
     if not df_acur.empty:
         df_plot = df_acur.dropna(subset=["Erro"])
+        df_c    = df_plot.copy()
 
-        fig2, ax2 = plt.subplots(figsize=(7, 5))
+        # Estatísticas para narrativa
+        n_anos      = len(df_c)
+        n_otimista  = int((df_c["Erro"] > 0.3).sum())
+        n_pessimista= int((df_c["Erro"] < -0.3).sum())
+        n_neutro    = n_anos - n_otimista - n_pessimista
+        erro_med    = round(df_c["Erro"].mean(), 2)
+        pior        = df_c.loc[df_c["Erro"].abs().idxmax()]
+        dominante   = "otimista" if n_otimista > n_pessimista else ("pessimista" if n_pessimista > n_otimista else "neutro")
+
+        # Legenda textual
+        st.markdown(
+            "🔴 **Otimista:** projetou **acima** do realizado (erro > +0.3) — "
+            "o resultado foi melhor que o esperado.  \n"
+            "🟢 **Pessimista:** projetou **abaixo** do realizado (erro < −0.3) — "
+            "o resultado foi pior que o esperado.  \n"
+            "🟡 **Neutro:** erro dentro de ±0.3 — projeção essencialmente acertada."
+        )
+
+        # Gráfico de barras horizontais
+        fig2, ax2 = plt.subplots(figsize=(7, max(4, n_anos * 0.7)))
         fig2.patch.set_facecolor("#0F1117")
         ax2.set_facecolor("#0F1117")
 
         cores = ["#FF4B6E" if e > 0.3 else ("#00D4AA" if e < -0.3 else "#FFB800")
-                 for e in df_plot["Erro"]]
-        ax2.barh(df_plot["Ano"].astype(str), df_plot["Erro"],
-                 color=cores, alpha=0.85)
+                 for e in df_c["Erro"]]
+        ax2.barh(df_c["Ano"].astype(str), df_c["Erro"], color=cores, alpha=0.85)
         ax2.axvline(0, color="#555", lw=0.8)
 
-        for i, (_, row) in enumerate(df_plot.iterrows()):
-            ax2.text(row["Erro"] + (0.05 if row["Erro"] >= 0 else -0.05),
-                     i, f"{row['Erro']:+.2f}",
-                     va="center", ha="left" if row["Erro"] >= 0 else "right",
-                     color="#AAAAAA", fontsize=8)
+        for i, (_, row) in enumerate(df_c.iterrows()):
+            offset = 0.03 if row["Erro"] >= 0 else -0.03
+            ax2.text(row["Erro"] + offset, i, f"{row['Erro']:+.2f}",
+                     va="center",
+                     ha="left" if row["Erro"] >= 0 else "right",
+                     color="#CCC", fontsize=8)
 
         ax2.grid(True, color="#FFF", alpha=0.05, lw=0.5, axis="x")
         ax2.tick_params(colors="#AAAAAA", labelsize=9)
         for sp in ax2.spines.values(): sp.set_edgecolor("#333")
-        ax2.set_xlabel(f"Erro = Projetado − Realizado ({unidade})", color="#AAAAAA", fontsize=9)
+        ax2.set_xlabel(f"Erro = Projetado − Realizado ({unidade})", color="#AAAAAA", fontsize=8)
         plt.tight_layout()
         st.pyplot(fig2); plt.close()
 
-        # Texto dinâmico
-        if not df_plot.empty:
-            n_otim = (df_plot["Erro"] > 0.3).sum()
-            n_pess = (df_plot["Erro"] < -0.3).sum()
-            maior_erro = df_plot.loc[df_plot["Erro"].abs().idxmax()]
-
-            if n_otim > n_pess:
-                direcao = f"Na maioria dos anos ({n_otim} de {len(df_plot)}), o mercado foi **otimista** — projetou {indicador_sel} mais alto do que o que se concretizou."
-            elif n_pess > n_otim:
-                direcao = f"Na maioria dos anos ({n_pess} de {len(df_plot)}), o mercado foi **pessimista** — projetou {indicador_sel} mais baixo do que o realizado."
-            else:
-                direcao = f"Os erros se distribuíram de forma equilibrada entre anos otimistas e pessimistas."
-
-            st.markdown(
-                f"{direcao} "
-                f"O ano com maior distância entre projeção e realidade foi **{int(maior_erro['Ano'])}** "
-                f"(erro de **{maior_erro['Erro']:+.2f} {unidade}**): o mercado projetou "
-                f"**{maior_erro['Projetado']:.2f}** e o resultado foi **{maior_erro['Realizado']:.2f}**."
-            )
+        # Narrativa dinâmica rica
+        vies_dir = "otimista" if erro_med > 0 else "pessimista"
+        vies_exp = (
+            "projetou o valor acima do que se concretizou"
+            if erro_med > 0
+            else "projetou o valor abaixo do que se concretizou"
+        )
+        st.markdown(
+            f"Na maioria dos anos ({max(n_otimista, n_pessimista, n_neutro)} de {n_anos}), "
+            f"o mercado foi **{dominante}** — {vies_exp}. "
+            f"O ano com maior distância entre projeção e realidade foi **{int(pior['Ano'])}** "
+            f"(erro de **{pior['Erro']:+.2f} {unidade}**): o mercado projetou "
+            f"**{pior['Projetado']:.2f}** e o resultado foi **{pior['Realizado']:.2f}**."
+        )
     else:
         st.info("Dados insuficientes.")
 
@@ -354,34 +358,53 @@ with col_e:
     st.markdown("#### Análise Automática")
 
     if not df_acur.empty and not df_acur.dropna(subset=["Erro"]).empty:
-        df_c = df_acur.dropna(subset=["Erro"])
+        df_c     = df_acur.dropna(subset=["Erro"])
         erro_med = round(df_c["Erro"].mean(), 2)
         erro_abs = round(df_c["Erro"].abs().mean(), 2)
-        n_otimista  = (df_c["Erro"] > 0.3).sum()
-        n_pessimista = (df_c["Erro"] < -0.3).sum()
-        n_neutro    = len(df_c) - n_otimista - n_pessimista
-        pior        = df_c.loc[df_c["Erro"].abs().idxmax()]
+        n_otimista   = int((df_c["Erro"] > 0.3).sum())
+        n_pessimista = int((df_c["Erro"] < -0.3).sum())
+        n_neutro     = len(df_c) - n_otimista - n_pessimista
+        pior         = df_c.loc[df_c["Erro"].abs().idxmax()]
 
-        # Viés estrutural
         if erro_med > 0.5:
             vies_txt = f"**viés otimista estrutural** (+{erro_med:.2f} {unidade} em média)"
-            vies_imp = "O mercado sistematicamente subestima a inflação/juros/câmbio — as projeções tendem a ser menores que o realizado."
+            vies_imp = (f"O mercado projetou sistematicamente **acima do realizado** — "
+                        f"subestimou choques de inflação/câmbio/juros.")
         elif erro_med < -0.5:
             vies_txt = f"**viés pessimista estrutural** ({erro_med:.2f} {unidade} em média)"
-            vies_imp = "O mercado sistematicamente superestima — as projeções tendem a ser maiores que o realizado."
+            vies_imp = (f"O mercado projetou sistematicamente **abaixo do realizado** — "
+                        f"superestimou pressões inflacionárias.")
         else:
             vies_txt = f"**sem viés estrutural relevante** (média {erro_med:+.2f} {unidade})"
-            vies_imp = "As projeções oscilam em torno do realizado sem tendência clara de erro."
+            vies_imp = "As projeções oscilam em torno do realizado sem tendência clara."
 
         st.markdown(
             f"No período analisado, as projeções Focus para **{indicador_sel}** apresentam {vies_txt}. "
             f"{vies_imp}\n\n"
-            f"O erro absoluto médio foi de **{erro_abs:.2f} {unidade}**, "
-            f"com **{n_otimista}** ano(s) de projeção otimista, "
-            f"**{n_pessimista}** pessimista(s) e **{n_neutro}** neutro(s).\n\n"
-            f"O maior erro ocorreu em **{int(pior['Ano'])}**, quando o mercado projetou "
-            f"**{pior['Projetado']:.2f}** e o realizado foi **{pior['Realizado']:.2f}** "
+            f"**Erro absoluto médio:** {erro_abs:.2f} {unidade}  \n"
+            f"**Otimista:** {n_otimista} ano(s) · "
+            f"**Pessimista:** {n_pessimista} · "
+            f"**Neutro:** {n_neutro}\n\n"
+            f"**Maior erro:** {int(pior['Ano'])} — projetou **{pior['Projetado']:.2f}**, "
+            f"realizado foi **{pior['Realizado']:.2f}** "
             f"(erro de **{pior['Erro']:+.2f} {unidade}**)."
+        )
+
+        st.markdown("---")
+        st.markdown("**Por que isso importa?**")
+        st.markdown(
+            "O **Boletim Focus** agrega projeções de ~130 instituições financeiras "
+            "e é o principal insumo do BCB para calibrar a política monetária. "
+            "Erros sistemáticos revelam padrões estruturais:\n\n"
+            "- **Viés otimista recorrente:** o consenso tende a subestimar choques — "
+            "covid, crise hídrica, guerras e deteriorações fiscais costumam surpreender\n"
+            "- **Viés pessimista:** ocorre após ciclos de aperto — o mercado superestima "
+            "a persistência da inflação quando a política monetária já está funcionando\n"
+            "- **Erros grandes em anos específicos:** sinalizam eventos extraordinários "
+            "fora do modelo de consenso\n\n"
+            "Se o mercado erra sistematicamente para um lado, isso pode indicar "
+            "**desancoragem das expectativas** — o que por si só já é um sinal "
+            "que o BCB monitora de perto."
         )
     else:
         st.info("Dados insuficientes para análise.")

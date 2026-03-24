@@ -42,7 +42,7 @@ def _filtros():
         index=0
     )
 
-sidebar_padrao(filtros_extra=_filtros)
+sidebar_padrao(pagina_atual="Analises_Reais", filtros_extra=_filtros)
 
 
 # -----------------------------------------------------------------------------
@@ -210,6 +210,22 @@ if bloco_sel in ("Todos", "Hiato do Produto"):
                 "proxy mensal do PIB. Hiato positivo = economia acima do "
                 "potencial; negativo = ociosidade."
             )
+
+            st.markdown("---")
+            st.markdown("**O que é o hiato do produto?**")
+            st.markdown(
+                "O **PIB potencial** é o nível de produção que a economia consegue manter "
+                "de forma sustentada sem gerar pressão inflacionária — determinado pelo "
+                "estoque de capital, força de trabalho e produtividade.\n\n"
+                "O **hiato** é a diferença entre o PIB efetivo e esse potencial:\n\n"
+                "- **Hiato positivo** → economia aquecida, trabalhadores e máquinas ocupados "
+                "além do ideal → pressão de custos e preços → sinal para o BCB apertar juros\n"
+                "- **Hiato negativo** → capacidade ociosa, desemprego acima do natural → "
+                "pressão desinflacionária → espaço para reduzir juros\n\n"
+                "O filtro HP separa a tendência de longo prazo (potencial) do ciclo econômico. "
+                "Limitação: o filtro é sensível ao ponto final da série — as leituras mais "
+                "recentes devem ser interpretadas com cautela."
+            )
         else:
             st.info("Dados insuficientes.")
 
@@ -323,6 +339,32 @@ if bloco_sel in ("Todos", "Nowcasting"):
                 st.info("Dados insuficientes para calcular correlação.")
         else:
             st.info("Dados não disponíveis.")
+
+    # Análise dinâmica do nowcasting — fora dos columns
+    ibcbr_v, ibcbr_d = ultimo_valor(df_ibcbr, "IBC_Br") if not df_ibcbr.empty else (None, None)
+    if ibcbr_v and ibcbr_d:
+        ibcbr_s = df_ibcbr["IBC_Br"].dropna()
+        var_ibcbr = round((ibcbr_s.iloc[-1] / ibcbr_s.iloc[-13] - 1) * 100, 1) if len(ibcbr_s) >= 13 else None
+        tendencia_txt = ""
+        if len(ibcbr_s) >= 4:
+            recente  = ibcbr_s.iloc[-1]
+            anterior = ibcbr_s.iloc[-4]
+            tendencia_txt = "em **aceleração**" if recente > anterior else "em **desaceleração**"
+        st.info(
+            f"**Leitura atual:** IBC-Br em **{ibcbr_v:,.1f}** ({ibcbr_d.strftime('%b/%Y')}) "
+            + (f"— variação de **{var_ibcbr:+.1f}%** em 12 meses, {tendencia_txt}." if var_ibcbr else ".")
+        )
+
+    st.markdown("**O que é Nowcasting?**")
+    st.markdown(
+        "O **PIB do IBGE** é divulgado com defasagem de 60–90 dias após o trimestre encerrado — "
+        "um tempo longo para quem precisa tomar decisões agora.\n\n"
+        "O **IBC-Br** (Índice de Atividade Econômica do BCB) é divulgado mensalmente com "
+        "~45 dias de defasagem e funciona como um **termômetro antecipado** da atividade. "
+        "Ele combina os indicadores de indústria, serviços e agropecuária do IBGE com pesos similares ao PIB.\n\n"
+        "**Nowcasting** é a prática de estimar o crescimento do trimestre *corrente* antes do "
+        "dado oficial — essencial para o COPOM calibrar juros em tempo real."
+    )
 
     st.markdown("---")
 
@@ -479,6 +521,22 @@ if bloco_sel in ("Todos", "Yield Curve"):
             )
 
         st.caption("Fonte: Tesouro Transparente · Atualização diária")
+
+        st.markdown("---")
+        st.markdown("**O que é a Yield Curve?**")
+        st.markdown(
+            "A **estrutura a termo da taxa de juros** (yield curve) mostra como a taxa de "
+            "retorno varia conforme o prazo do título:\n\n"
+            "- **Curva normal (inclinada para cima):** taxas longas > curtas — o mercado "
+            "exige prêmio para emprestar por mais tempo. Sinal de crescimento esperado.\n"
+            "- **Curva invertida (inclinada para baixo):** taxas curtas > longas — o mercado "
+            "precifica queda futura de juros, geralmente associada a recessão iminente. "
+            "Nos EUA, a inversão antecedeu todas as recessões das últimas 5 décadas.\n"
+            "- **Curva flat (plana):** transição — incerteza sobre a direção dos juros.\n\n"
+            "No Brasil, a distinção entre **Prefixado** (taxa nominal) e **IPCA+** (taxa real) "
+            "é crucial: a diferença entre as curvas revela a **inflação implícita** que o mercado "
+            "precifica — um termômetro das expectativas inflacionárias de longo prazo."
+        )
 
     st.markdown("---")
 
