@@ -109,12 +109,10 @@ def sidebar_padrao(pagina_atual=None, filtros_extra=None):
         # ── GRUPO 6: Internacional ───────────────────────────────────────
         with st.expander("🌐  Internacional",
                          expanded=(grupo_ativo == "internacional")):
+            st.page_link("pages/19_Cambios.py", label="💱  Câmbios & PPP")
             st.markdown(
                 "<span style='color:#555;font-size:0.8rem;padding-left:8px'>"
-                "🚧 Em breve</span>", unsafe_allow_html=True)
-            # st.page_link("pages/16_Internacional.py", label="🌍  PIB Global & OCDE")
-            # st.page_link("pages/17_Cambios.py",       label="💱  Câmbios Diversas")
-            # st.page_link("pages/18_Commodities.py",   label="🌽  Commodities")
+                "🚧 PIB Global — em breve</span>", unsafe_allow_html=True)
 
         st.markdown("---")
 
