@@ -419,11 +419,13 @@ def get_focus_anual():
 # Atualização mensal: rodar scripts/atualizar_dados.py localmente e fazer commit
 # -----------------------------------------------------------------------------
 def _parquet_path(nome):
-    import pathlib
-    base = pathlib.Path(__file__).resolve().parent.parent
-    return str(base / 'data' / f'{nome}.parquet')
-
-
+    p1 = os.path.join(os.getcwd(), "data", f"{nome}.parquet")
+    if os.path.exists(p1):
+        return p1
+    p2 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", f"{nome}.parquet")
+    return os.path.normpath(p2)
+ 
+ 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_ibovespa():
     """Ibovespa mensal + top ações diárias — lidos de data/ibovespa.parquet e data/acoes.parquet.
@@ -708,6 +710,60 @@ def get_industria_indicadores():
         "NUCI_FGV": 24352,
         "NUCI_CNI": 28561,
         "ICEI":     4394,
+    }
+    return _coletar_sgs(SERIES, anos=8)
+
+
+
+# -----------------------------------------------------------------------------
+# BLOCO SETOR REAL — Comércio
+# -----------------------------------------------------------------------------
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_pmc():
+    """Pesquisa Mensal de Comércio — IBGE SIDRA tabela 8880 (base 2022=100).
+    Classificador c11046/allxt necessário para retornar valores não nulos.
+    """
+    VARS = {
+        "7169":  "Indice",
+        "11709": "VarMensal",
+        "11711": "Var12m",
+    }
+    url = ("https://apisidra.ibge.gov.br/values/t/8880"
+           "/n1/all/v/all/p/last%2036/c11046/allxt?formato=json")
+    try:
+        df = pd.read_json(url)
+        df = df.query("V not in ['Valor','...', '-', '..']").copy()
+        df = df[df["D2C"].astype(str).isin(VARS.keys())].copy()
+        df["Variavel"] = df["D2C"].astype(str).map(VARS)
+        df["Valor"] = pd.to_numeric(
+            df["V"].astype(str).str.replace(",", "."), errors="coerce")
+        meses = {"janeiro":1,"fevereiro":2,"março":3,"abril":4,"maio":5,"junho":6,
+                 "julho":7,"agosto":8,"setembro":9,"outubro":10,"novembro":11,"dezembro":12}
+        def parse_mes(s):
+            try:
+                parts = str(s).lower().split()
+                return pd.Timestamp(int(parts[1]), meses[parts[0]], 1)
+            except Exception:
+                return pd.NaT
+        df["Data"] = df["D3N"].apply(parse_mes)
+        df = df.dropna(subset=["Data","Valor"])
+        wide = df.pivot_table(index="Data", columns="Variavel",
+                              values="Valor", aggfunc="last")
+        wide.index = pd.to_datetime(wide.index)
+        return wide.sort_index()
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_comercio_indicadores():
+    """Confiança do consumidor e endividamento — BCB/SGS."""
+    SERIES = {
+        "ICC_FGV":        4393,
+        "Endividamento":  29039,
+        "Comprometimento":29040,
+        "Inadimplencia":  29042,
+        "Varejo_BCB":     1455,
     }
     return _coletar_sgs(SERIES, anos=8)
 

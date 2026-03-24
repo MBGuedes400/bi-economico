@@ -101,9 +101,7 @@ def sidebar_padrao(pagina_atual=None, filtros_extra=None):
         with st.expander("🏭  Setorial",
                          expanded=(grupo_ativo == "setorial")):
             st.page_link("pages/15_Industria.py", label="⚙️  Produção Industrial")
-            st.markdown(
-                "<span style='color:#555;font-size:0.8rem;padding-left:8px'>"
-                "🚧 Comércio — em breve</span>", unsafe_allow_html=True)
+            st.page_link("pages/16_Comercio.py",  label="🛒  Varejo & Confiança")
             st.markdown(
                 "<span style='color:#555;font-size:0.8rem;padding-left:8px'>"
                 "🚧 Agropecuária — em breve</span>", unsafe_allow_html=True)
