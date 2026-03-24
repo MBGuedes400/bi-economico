@@ -414,55 +414,55 @@ def get_focus_anual():
 
 
 # -----------------------------------------------------------------------------
-# BLOCO MERCADO FINANCEIRO — stooq.com (cloud-safe, sem API key)
+# BLOCO MERCADO FINANCEIRO — parquet local (gerado por scripts/atualizar_dados.py)
+# Atualização mensal: rodar scripts/atualizar_dados.py localmente e fazer commit
 # -----------------------------------------------------------------------------
+def _parquet_path(nome):
+    """Resolve caminho do parquet tanto em dev local quanto no Streamlit Cloud."""
+    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, "data", f"{nome}.parquet")
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_ibovespa():
-    """Ibovespa via stooq.com — ticker ^bvsp, frequência mensal (i=m).
-    Ações individuais retornam DataFrame vazio — sem fonte cloud-safe disponível.
+    """Ibovespa mensal + top ações diárias — lidos de data/ibovespa.parquet e data/acoes.parquet.
+    Arquivos gerados por scripts/atualizar_dados.py (roda localmente com yfinance).
+    Retorna: (df_ibovespa_mensal, df_acoes_diarias)
     """
+    df_ibov  = pd.DataFrame()
+    df_acoes = pd.DataFrame()
     try:
-        url = "https://stooq.com/q/d/l/?s=^bvsp&i=m"
-        df  = pd.read_csv(url, parse_dates=["Date"])
-        df  = df.dropna(subset=["Close"])
-        s   = df.set_index("Date")["Close"].rename("Ibovespa")
-        s.index = pd.to_datetime(s.index)
-        return s.sort_index().to_frame(), pd.DataFrame()
+        p = _parquet_path("ibovespa")
+        if os.path.exists(p):
+            df_ibov = pd.read_parquet(p)
+            df_ibov.index = pd.to_datetime(df_ibov.index)
     except Exception:
-        return pd.DataFrame(), pd.DataFrame()
+        pass
+    try:
+        p = _parquet_path("acoes")
+        if os.path.exists(p):
+            df_acoes = pd.read_parquet(p)
+            df_acoes.index = pd.to_datetime(df_acoes.index)
+    except Exception:
+        pass
+    return df_ibov, df_acoes
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_commodities():
-    """Commodities via stooq.com (cloud-safe, sem API key).
-    Tickers CBOT em USD: zs.f=Soja, zc.f=Milho, zw.f=Trigo (bolsa Chicago).
-    Frequência mensal (i=m). Falha isolada por ticker não derruba as demais.
+    """Commodities — lidas de data/commodities.parquet.
+    Fonte: World Bank Pink Sheet (via scripts/atualizar_dados.py).
+    Colunas: Petroleo, Ouro, Soja, Milho, Trigo, Cafe, Acucar — todas em USD.
     """
-    TICKERS = {
-        "Petroleo": "cl.f",
-        "Ouro":     "xauusd",
-        "Soja":     "zs.f",
-        "Milho":    "zc.f",
-        "Trigo":    "zw.f",
-        "Cafe":     "kc.f",
-        "Acucar":   "sb.f",
-    }
-    frames = {}
-    for nome, ticker in TICKERS.items():
-        try:
-            url = f"https://stooq.com/q/d/l/?s={ticker}&i=m"
-            df  = pd.read_csv(url, parse_dates=["Date"])
-            df  = df.dropna(subset=["Close"])
-            s   = df.set_index("Date")["Close"].rename(nome)
-            if not s.empty:
-                frames[nome] = s.sort_index().round(2)
-        except Exception:
-            pass
-    if not frames:
+    try:
+        p = _parquet_path("commodities")
+        if not os.path.exists(p):
+            return pd.DataFrame()
+        df = pd.read_parquet(p)
+        df.index = pd.to_datetime(df.index)
+        return df.sort_index()
+    except Exception:
         return pd.DataFrame()
-    df_out = pd.DataFrame(frames)
-    df_out.index = pd.to_datetime(df_out.index)
-    return df_out.sort_index()
 
 
 @st.cache_data(ttl=3600, show_spinner=False)

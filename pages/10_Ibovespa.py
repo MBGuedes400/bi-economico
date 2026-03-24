@@ -31,11 +31,12 @@ with st.spinner("Carregando dados de mercado..."):
     df_ibov, df_acoes = get_ibovespa()
     df_jr             = get_juros()
 
-# Aviso quando BCB/SGS não retornou dados
+# Aviso quando parquet não foi gerado ainda
 if df_ibov.empty:
     st.warning(
-        "⚠️ **Ibovespa temporariamente indisponível.** "
-        "A API do BCB pode estar fora do ar. Tente novamente em alguns minutos."
+        "⚠️ **Dados do Ibovespa não encontrados.** "
+        "Rode `python scripts/atualizar_dados.py` localmente e faça commit da pasta `data/`. "
+        "O script usa yfinance (funciona em ambiente local) e gera os arquivos necessários para o deploy."
     )
 
 dt_ini  = pd.Timestamp(f"{ano_ini}-01-01")
