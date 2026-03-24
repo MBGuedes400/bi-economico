@@ -2,6 +2,7 @@
 # utils/dados.py — Coleta e cache de todos os dados econômicos
 # =============================================================================
 
+import os
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -434,15 +435,15 @@ def get_ibovespa():
         if os.path.exists(p):
             df_ibov = pd.read_parquet(p)
             df_ibov.index = pd.to_datetime(df_ibov.index)
-    except Exception:
+    except Exception as e:
         pass
     try:
         p = _parquet_path("acoes")
         if os.path.exists(p):
             df_acoes = pd.read_parquet(p)
             df_acoes.index = pd.to_datetime(df_acoes.index)
-    except Exception:
-        pass
+    except Exception as e:
+        st.error(f"ERRO acoes: {e}")  # ← trocar pass por isso
     return df_ibov, df_acoes
  
  

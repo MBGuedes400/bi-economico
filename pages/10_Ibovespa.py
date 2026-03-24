@@ -31,6 +31,8 @@ with st.spinner("Carregando dados de mercado..."):
     df_ibov, df_acoes = get_ibovespa()
     df_jr             = get_juros()
 
+
+
 # Aviso quando parquet não foi gerado ainda
 if df_ibov.empty:
     st.warning(
