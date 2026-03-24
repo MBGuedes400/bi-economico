@@ -175,7 +175,8 @@ with col2:
             plt.tight_layout()
             st.pyplot(fig2); plt.close()
 
-# Análise dinâmica do período
+# Análise dinâmica do período — retornos pode ser {} se df_cf estiver vazio
+retornos = retornos if 'retornos' in dir() else {}
 if retornos:
     melhor   = max(retornos, key=retornos.get)
     pior     = min(retornos, key=retornos.get)

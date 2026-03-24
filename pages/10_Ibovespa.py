@@ -31,6 +31,15 @@ with st.spinner("Carregando dados de mercado..."):
     df_ibov, df_acoes = get_ibovespa()
     df_jr             = get_juros()
 
+# Aviso quando yfinance não está disponível (ex: Streamlit Cloud)
+if df_ibov.empty:
+    st.warning(
+        "⚠️ **Dados de mercado temporariamente indisponíveis.** "
+        "O yfinance (fonte do Ibovespa e ações) pode estar bloqueado no ambiente de hospedagem. "
+        "Os dados ficam disponíveis ao rodar localmente. "
+        "Estamos avaliando fontes alternativas para o deploy em nuvem."
+    )
+
 dt_ini  = pd.Timestamp(f"{ano_ini}-01-01")
 dt_fim_ = pd.Timestamp(f"{ano_fim}-12-31")
 
