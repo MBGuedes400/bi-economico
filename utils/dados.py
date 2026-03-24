@@ -2,7 +2,6 @@
 # utils/dados.py — Coleta e cache de todos os dados econômicos
 # =============================================================================
 
-import os
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -419,15 +418,19 @@ def get_focus_anual():
 # Atualização mensal: rodar scripts/atualizar_dados.py localmente e fazer commit
 # -----------------------------------------------------------------------------
 def _parquet_path(nome):
-    """Caminho absoluto para data/{nome}.parquet.
-    Resolve sempre relativo ao arquivo utils/dados.py — independe de cwd.
-    """
-    import pathlib
-    base = pathlib.Path(__file__).resolve().parent.parent
-    return str(base / 'data' / f'{nome}.parquet')
+    p1 = os.path.join(os.getcwd(), "data", f"{nome}.parquet")
+    if os.path.exists(p1):
+        return p1
+    p2 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", f"{nome}.parquet")
+    return os.path.normpath(p2)
+ 
  
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_ibovespa():
+    """Ibovespa mensal + top ações diárias — lidos de data/ibovespa.parquet e data/acoes.parquet.
+    Arquivos gerados por scripts/atualizar_dados.py (roda localmente com yfinance).
+    Retorna: (df_ibovespa_mensal, df_acoes_diarias)
+    """
     df_ibov  = pd.DataFrame()
     df_acoes = pd.DataFrame()
     try:
@@ -435,20 +438,24 @@ def get_ibovespa():
         if os.path.exists(p):
             df_ibov = pd.read_parquet(p)
             df_ibov.index = pd.to_datetime(df_ibov.index)
-    except Exception as e:
+    except Exception:
         pass
     try:
         p = _parquet_path("acoes")
         if os.path.exists(p):
             df_acoes = pd.read_parquet(p)
             df_acoes.index = pd.to_datetime(df_acoes.index)
-    except Exception as e:
-        st.error(f"ERRO acoes: {e}")  # ← trocar pass por isso
+    except Exception:
+        pass
     return df_ibov, df_acoes
  
  
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_commodities():
+    """Commodities — lidas de data/commodities.parquet.
+    Fonte: World Bank Pink Sheet (via scripts/atualizar_dados.py).
+    Colunas: Petroleo, Ouro, Soja, Milho, Trigo, Cafe, Acucar — todas em USD.
+    """
     try:
         p = _parquet_path("commodities")
         if not os.path.exists(p):
@@ -642,6 +649,68 @@ def get_fundos_bcb():
     if df.empty:
         return df
     return _normalizar_bilhoes(df, list(SERIES.keys()))
+
+
+
+# -----------------------------------------------------------------------------
+# BLOCO SETOR REAL — Indústria
+# -----------------------------------------------------------------------------
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_pim_pf():
+    """Produção Industrial Mensal — IBGE SIDRA tabela 3653.
+    Índice de base fixa sem ajuste sazonal (Base: média 2012 = 100).
+    Retorna DataFrame wide: index=Data, colunas=setores.
+    """
+    SETORES = {
+        "129315": "Extrativa",
+        "129316": "Transformacao",
+        "129317": "Alimentos",
+        "129326": "Petroleo_Derivados",
+        "129330": "Farmaceuticos",
+        "129333": "Minerais_nao_Metalicos",
+        "129334": "Metalurgia",
+        "129337": "Maquinas_Equipamentos",
+        "129338": "Veiculos",
+        "129336": "Eletronicos",
+    }
+    url = ("https://apisidra.ibge.gov.br/values/t/3653"
+           "/n1/all/v/3135/p/last%2036/c544/allxt?formato=json")
+    try:
+        df = pd.read_json(url)
+        df = df.query("V not in ['Valor','...', '-']").copy()
+        df = df[df["D4C"].astype(str).isin(SETORES.keys())].copy()
+        df["Setor"] = df["D4C"].astype(str).map(SETORES)
+        df["Valor"] = pd.to_numeric(
+            df["V"].astype(str).str.replace(",", "."), errors="coerce")
+        meses = {"janeiro":1,"fevereiro":2,"março":3,"abril":4,"maio":5,"junho":6,
+                 "julho":7,"agosto":8,"setembro":9,"outubro":10,"novembro":11,"dezembro":12}
+        def parse_mes(s):
+            try:
+                parts = str(s).lower().split()
+                return pd.Timestamp(int(parts[1]), meses[parts[0]], 1)
+            except Exception:
+                return pd.NaT
+        df["Data"] = df["D3N"].apply(parse_mes)
+        df = df.dropna(subset=["Data","Valor"])
+        wide = df.pivot_table(index="Data", columns="Setor",
+                              values="Valor", aggfunc="last")
+        wide.index = pd.to_datetime(wide.index)
+        return wide.sort_index()
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_industria_indicadores():
+    """NUCI e ICEI — BCB/SGS.
+    NUCI_FGV=24352, NUCI_CNI=28561, ICEI=4394
+    """
+    SERIES = {
+        "NUCI_FGV": 24352,
+        "NUCI_CNI": 28561,
+        "ICEI":     4394,
+    }
+    return _coletar_sgs(SERIES, anos=8)
 
 # -----------------------------------------------------------------------------
 # HELPERS
