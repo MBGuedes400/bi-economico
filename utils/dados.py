@@ -418,81 +418,62 @@ def get_focus_anual():
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_ibovespa():
-    """Ibovespa histórico + top ações via yfinance.
-    yfinance retorna MultiIndex (Price, Ticker) — acessar com .xs()
+    """Ibovespa histórico via BCB/SGS série 7845 (cloud-safe).
+    Ações individuais retornam DataFrame vazio — yfinance bloqueado no Streamlit Cloud.
+    Fonte: https://api.bcb.gov.br/dados/serie/bcdata.sgs.7845/dados
     """
-    try:
-        import yfinance as yf
-        from datetime import datetime
-        fim    = datetime.today()
-        inicio = fim.replace(year=fim.year - 10)
+    fim    = datetime.today()
+    inicio = fim - relativedelta(years=10)
+    ini_dmy = inicio.strftime("%d/%m/%Y")
+    fim_dmy = fim.strftime("%d/%m/%Y")
 
-        # Ibovespa
-        ibov = yf.download("^BVSP", start=inicio, end=fim,
-                            progress=False, auto_adjust=True)
-        if ibov.empty:
-            return pd.DataFrame(), pd.DataFrame()
-        ibov.index = pd.to_datetime(ibov.index)
-        # MultiIndex: acessa Close do ticker ^BVSP
-        if isinstance(ibov.columns, pd.MultiIndex):
-            close = ibov["Close"]["^BVSP"]
-        else:
-            close = ibov["Close"]
-        ibov_m = close.resample("MS").last().rename("Ibovespa")
-
-        # Top ações
-        TICKERS = ["VALE3.SA","PETR4.SA","ITUB4.SA","BBDC4.SA",
-                   "ABEV3.SA","WEGE3.SA","RENT3.SA","MGLU3.SA"]
-        raw = yf.download(TICKERS, start=inicio, end=fim,
-                          progress=False, auto_adjust=True)
-        if isinstance(raw.columns, pd.MultiIndex):
-            acoes = raw["Close"]
-        else:
-            acoes = raw
-        acoes.index = pd.to_datetime(acoes.index)
-        acoes.columns = [str(c).replace(".SA","") for c in acoes.columns]
-        return ibov_m.to_frame(), acoes
-    except Exception:
+    s = _fetch_sgs_rest(7845, ini_dmy, fim_dmy, timeout=60)
+    if s is None or s.empty:
         return pd.DataFrame(), pd.DataFrame()
+
+    ibov_m = s.rename("Ibovespa").to_frame()
+    ibov_m.index = pd.to_datetime(ibov_m.index)
+    return ibov_m, pd.DataFrame()
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_commodities():
-    """Commodities agrícolas e energia via yfinance."""
-    try:
-        import yfinance as yf
-        from datetime import datetime
-        TICKERS = {
-            "Soja":      "ZS=F",
-            "Milho":     "ZC=F",
-            "Trigo":     "ZW=F",
-            "Cafe":      "KC=F",
-            "Acucar":    "SB=F",
-            "Petroleo":  "CL=F",
-            "Ouro":      "GC=F",
-        }
-        fim    = datetime.today()
-        inicio = fim.replace(year=fim.year - 10)
-        frames = {}
-        for nome, ticker in TICKERS.items():
-            try:
-                raw = yf.download(ticker, start=inicio, end=fim,
-                                  progress=False, auto_adjust=True)
-                if isinstance(raw.columns, pd.MultiIndex):
-                    s = raw["Close"][ticker]
-                else:
-                    s = raw["Close"]
-                if not s.empty:
-                    frames[nome] = s.resample("MS").last().round(2)
-            except Exception:
-                pass
-        if not frames:
-            return pd.DataFrame()
-        df = pd.DataFrame(frames)
-        df.index = pd.to_datetime(df.index)
-        return df
-    except Exception:
+    """Commodities via stooq.com (cloud-safe, sem API key).
+    Cada commodity é buscada individualmente — falha isolada não derruba as demais.
+    Frequência mensal (i=m). Resample MS + last() para alinhar ao padrão do projeto.
+    Tickers stooq: cl.f=Petróleo WTI, xauusd=Ouro, zs.f=Soja, zc.f=Milho,
+                   zw.f=Trigo, kc.f=Café, sb.f=Açúcar
+    """
+    TICKERS = {
+        "Petroleo": "cl.f",
+        "Ouro":     "xauusd",
+        "Soja":     "zs.f",
+        "Milho":    "zc.f",
+        "Trigo":    "zw.f",
+        "Cafe":     "kc.f",
+        "Acucar":   "sb.f",
+    }
+    fim    = datetime.today()
+    inicio = fim - relativedelta(years=10)
+
+    frames = {}
+    for nome, ticker in TICKERS.items():
+        url = f"https://stooq.com/q/d/l/?s={ticker}&i=m"
+        try:
+            df = pd.read_csv(url, parse_dates=["Date"])
+            df = df.dropna(subset=["Close"])
+            df = df[df["Date"] >= pd.Timestamp(inicio)]
+            s  = df.set_index("Date")["Close"].resample("MS").last().round(2)
+            if not s.empty:
+                frames[nome] = s
+        except Exception:
+            pass
+
+    if not frames:
         return pd.DataFrame()
+    df_out = pd.DataFrame(frames)
+    df_out.index = pd.to_datetime(df_out.index)
+    return df_out
 
 
 @st.cache_data(ttl=3600, show_spinner=False)

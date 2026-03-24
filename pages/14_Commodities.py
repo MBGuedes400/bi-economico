@@ -73,7 +73,7 @@ st.markdown("""
     🌽 Commodities
 </h1>
 <p style='text-align:center;color:#AAAAAA;margin-top:-10px;margin-bottom:20px'>
-    Soja · Milho · Trigo · Café · Açúcar · Petróleo · Ouro — via yfinance
+    Soja · Milho · Trigo · Café · Açúcar · Petróleo · Ouro — via stooq.com
 </p>""", unsafe_allow_html=True)
 st.markdown("---")
 
