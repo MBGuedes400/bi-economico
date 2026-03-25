@@ -781,6 +781,120 @@ def get_comercio_indicadores():
     }
     return _coletar_sgs(SERIES, anos=8)
 
+
+
+# -----------------------------------------------------------------------------
+# BLOCO ONDA 3 — Cambios e PPP
+# -----------------------------------------------------------------------------
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_cambios_adicionais():
+    """Cambios EUR, GBP, CNY, JPY, CHF vs BRL — BCB/SGS sem dataFinal.
+    IMPORTANTE: nao usar dataFinal na URL — series retornam vazias com ele.
+    """
+    from datetime import datetime
+    fim     = datetime.today()
+    ini     = fim.replace(year=fim.year - 10)
+    ini_dmy = ini.strftime("%d/%m/%Y")
+    SERIES  = {
+        "EUR_BRL": 21619, "GBP_BRL": 21623,
+        "CNY_BRL": 21634, "JPY_BRL": 21621, "CHF_BRL": 21622,
+    }
+    frames = {}
+    for nome, cod in SERIES.items():
+        url = (f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{cod}/dados"
+               f"?formato=json&dataInicial={ini_dmy}")
+        try:
+            sess = requests.Session()
+            sess.headers.update({"User-Agent": "Mozilla/5.0"})
+            resp = sess.get(url, timeout=60)
+            resp.raise_for_status()
+            dados = resp.json()
+            if not dados:
+                continue
+            df = pd.DataFrame(dados)
+            df["data"]  = pd.to_datetime(df["data"], format="%d/%m/%Y")
+            df["valor"] = pd.to_numeric(
+                df["valor"].astype(str).str.replace(",", "."), errors="coerce")
+            s = df.set_index("data")["valor"].dropna()
+            s.index = pd.to_datetime(s.index)
+            frames[nome] = s.resample("MS").last().round(4)
+        except Exception:
+            pass
+    if not frames:
+        return pd.DataFrame()
+    df_out = pd.DataFrame(frames)
+    df_out.index = pd.to_datetime(df_out.index)
+    return df_out.sort_index()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_ppp_data():
+    """Paridade de Poder de Compra — USD/BRL.
+    Fontes identicas ao codigo original de referencia:
+      - USD/BRL nominal: BCB/SGS 3695
+      - IPCA numero-indice: IBGE/SIDRA tabela 1737 v2266
+      - CPI-U EUA: FRED via CSV (observation_date, CPIAUCSL)
+    Metodologia: P_rebased = P_t/P_0 x 100 para ambos antes do calculo.
+      E_ppp = E_0 x (P_rebased / P*_rebased)
+      RER   = E  x (P*_rebased / P_rebased)
+    """
+    DATA_BASE = "1999-01-01"
+    try:
+        # 1. USD/BRL nominal
+        url_usd = ("https://api.bcb.gov.br/dados/serie/bcdata.sgs.3695/dados"
+                   "?formato=json&dataInicial=01/01/1999")
+        sess = requests.Session()
+        sess.headers.update({"User-Agent": "Mozilla/5.0"})
+        r_usd = sess.get(url_usd, timeout=60)
+        r_usd.raise_for_status()
+        df_usd = pd.DataFrame(r_usd.json())
+        df_usd["data"]  = pd.to_datetime(df_usd["data"], format="%d/%m/%Y")
+        df_usd["valor"] = pd.to_numeric(
+            df_usd["valor"].astype(str).str.replace(",", "."), errors="coerce")
+        s_usd = df_usd.set_index("data")["valor"].dropna().resample("MS").last()
+
+        # 2. IPCA numero-indice — SIDRA tabela 1737 v2266
+        url_ipca = ("https://apisidra.ibge.gov.br/values/t/1737"
+                    "/n1/all/v/2266/p/all?formato=json")
+        df_ipca = pd.read_json(url_ipca)
+        df_ipca = df_ipca.query("V not in ['Valor','...', '-']").copy()
+        df_ipca["valor"] = pd.to_numeric(
+            df_ipca["V"].astype(str).str.replace(",", "."), errors="coerce")
+        df_ipca["data"] = pd.to_datetime(
+            df_ipca["D3C"].astype(str), format="%Y%m")
+        s_ipca = (df_ipca.dropna(subset=["data","valor"])
+                  .set_index("data")["valor"].sort_index())
+        s_ipca = s_ipca[s_ipca.index >= DATA_BASE].resample("MS").last()
+
+        # 3. CPI-U EUA — FRED via CSV direto
+        url_cpi = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL"
+        df_cpi = pd.read_csv(url_cpi)
+        df_cpi["data"] = pd.to_datetime(df_cpi["observation_date"])
+        df_cpi["cpi"]  = pd.to_numeric(df_cpi["CPIAUCSL"], errors="coerce")
+        s_cpi = (df_cpi.set_index("data")["cpi"].dropna()
+                 .sort_index()[DATA_BASE:].resample("MS").last())
+
+        # Alinhar e calcular
+        df = pd.DataFrame({"E": s_usd, "ipca": s_ipca, "cpi": s_cpi}).dropna()
+        if df.empty or len(df) < 24:
+            return pd.DataFrame()
+
+        df["P_rebased"]      = df["ipca"] / df["ipca"].iloc[0] * 100
+        df["P_star_rebased"] = df["cpi"]  / df["cpi"].iloc[0]  * 100
+        df["E_ppp"]          = df["E"].iloc[0] * (df["P_rebased"] / df["P_star_rebased"])
+        df["RER"]            = df["E"] * (df["P_star_rebased"] / df["P_rebased"])
+
+        rer_media          = float(df["RER"].mean())
+        rer_std            = float(df["RER"].std())
+        df["misalignment"] = df["RER"] - rer_media
+        df["rer_media"]    = rer_media
+        df["rer_std"]      = rer_std
+
+        return df[["E","E_ppp","RER","misalignment","rer_media","rer_std"]].sort_index()
+
+    except Exception:
+        return pd.DataFrame()
+
 # -----------------------------------------------------------------------------
 # HELPERS
 # -----------------------------------------------------------------------------
