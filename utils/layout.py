@@ -107,11 +107,9 @@ def sidebar_padrao(pagina_atual=None, filtros_extra=None):
         # ── GRUPO 5: Setorial ────────────────────────────────────────────
         with st.expander("🏭  Setorial",
                          expanded=(grupo_ativo == "setorial")):
-            st.page_link("pages/15_Industria.py", label="⚙️  Produção Industrial")
-            st.page_link("pages/16_Comercio.py",  label="🛒  Varejo & Confiança")
-            st.markdown(
-                "<span style='color:#555;font-size:0.8rem;padding-left:8px'>"
-                "🚧 Agropecuária — em breve</span>", unsafe_allow_html=True)
+            st.page_link("pages/15_Industria.py",    label="⚙️  Producao Industrial")
+            st.page_link("pages/16_Comercio.py",     label="🛒  Varejo e Confianca")
+            st.page_link("pages/17_Agropecuaria.py", label="🌾  Agropecuaria")
 
         # ── GRUPO 6: Internacional ───────────────────────────────────────
         with st.expander("🌐  Internacional",

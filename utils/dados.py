@@ -720,14 +720,7 @@ def get_industria_indicadores():
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_pmc():
-    """Pesquisa Mensal de Comercio — IBGE SIDRA tabela 8880 (base 2022=100).
-    Classificador c11046/allxt obrigatorio — sem ele retorna '..' em todos os valores.
-    """
-    VARS = {
-        "7169":  "Indice",
-        "11709": "VarMensal",
-        "11711": "Var12m",
-    }
+    VARS = {"7169": "Indice", "11709": "VarMensal", "11711": "Var12m"}
     url = ("https://apisidra.ibge.gov.br/values/t/8880"
            "/n1/all/v/all/p/last%2036/c11046/allxt?formato=json")
     try:
@@ -735,31 +728,19 @@ def get_pmc():
         df = df.query("V not in ['Valor','...', '-', '..']").copy()
         df = df[df["D2C"].astype(str).isin(VARS.keys())].copy()
         df["Variavel"] = df["D2C"].astype(str).map(VARS)
-        df["Valor"] = pd.to_numeric(
-            df["V"].astype(str).str.replace(",", "."), errors="coerce")
+        df["Valor"] = pd.to_numeric(df["V"].astype(str).str.replace(",", "."), errors="coerce")
         meses = {"janeiro":1,"fevereiro":2,"marco":3,"abril":4,"maio":5,"junho":6,
                  "julho":7,"agosto":8,"setembro":9,"outubro":10,"novembro":11,"dezembro":12}
-        meses_pt = {"janeiro":1,"fevereiro":2,"ço":3,"abril":4,"maio":5,"junho":6,
-                    "julho":7,"agosto":8,"setembro":9,"outubro":10,"novembro":11,"dezembro":12}
         def parse_mes(s):
             try:
                 parts = str(s).lower().split()
-                mes_num = None
-                for k, v in {"janeiro":1,"fevereiro":2,"mar":3,"abril":4,"maio":5,
-                              "junho":6,"julho":7,"agosto":8,"setembro":9,
-                              "outubro":10,"novembro":11,"dezembro":12}.items():
-                    if k in parts[0]:
-                        mes_num = v
-                        break
-                if mes_num is None:
-                    return pd.NaT
-                return pd.Timestamp(int(parts[1]), mes_num, 1)
+                mes_num = next((v for k,v in meses.items() if k in parts[0]), None)
+                return pd.Timestamp(int(parts[1]), mes_num, 1) if mes_num else pd.NaT
             except Exception:
                 return pd.NaT
         df["Data"] = df["D3N"].apply(parse_mes)
         df = df.dropna(subset=["Data","Valor"])
-        wide = df.pivot_table(index="Data", columns="Variavel",
-                              values="Valor", aggfunc="last")
+        wide = df.pivot_table(index="Data", columns="Variavel", values="Valor", aggfunc="last")
         wide.index = pd.to_datetime(wide.index)
         return wide.sort_index()
     except Exception:
@@ -768,19 +749,99 @@ def get_pmc():
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_comercio_indicadores():
-    """Confianca do consumidor e endividamento — BCB/SGS.
-    ICC_FGV=4393, Endividamento=29039, Comprometimento=29040,
-    Inadimplencia=29042, Varejo_BCB=1455
-    """
-    SERIES = {
-        "ICC_FGV":        4393,
-        "Endividamento":  29039,
-        "Comprometimento":29040,
-        "Inadimplencia":  29042,
-        "Varejo_BCB":     1455,
-    }
+    SERIES = {"ICC_FGV": 4393, "Endividamento": 29039,
+              "Comprometimento": 29040, "Inadimplencia": 29042, "Varejo_BCB": 1455}
     return _coletar_sgs(SERIES, anos=8)
 
+
+# -----------------------------------------------------------------------------
+# BLOCO SETOR REAL — Agropecuaria
+# -----------------------------------------------------------------------------
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_lspa():
+    VARS = {"35": "Producao", "109": "Area_Plantada", "216": "Area_Colhida", "36": "Rendimento"}
+    url = "https://apisidra.ibge.gov.br/values/t/6588/n1/all/v/all/p/last%2036?formato=json"
+    try:
+        df = pd.read_json(url)
+        df = df.query("V not in ['Valor','...', '-']").copy()
+        df = df[df["D2C"].astype(str).isin(VARS.keys())].copy()
+        df["Variavel"] = df["D2C"].astype(str).map(VARS)
+        df["Valor"] = pd.to_numeric(df["V"].astype(str).str.replace(",", "."), errors="coerce")
+        meses = {"janeiro":1,"fevereiro":2,"marco":3,"abril":4,"maio":5,"junho":6,
+                 "julho":7,"agosto":8,"setembro":9,"outubro":10,"novembro":11,"dezembro":12}
+        def parse_mes(s):
+            try:
+                parts = str(s).lower().split()
+                mes_num = next((v for k,v in meses.items() if k in parts[0]), None)
+                return pd.Timestamp(int(parts[1]), mes_num, 1) if mes_num else pd.NaT
+            except Exception:
+                return pd.NaT
+        df["Data"] = df["D3N"].apply(parse_mes)
+        df = df.dropna(subset=["Data","Valor"])
+        wide = df.pivot_table(index="Data", columns="Variavel", values="Valor", aggfunc="last")
+        wide.index = pd.to_datetime(wide.index)
+        return wide.sort_index()
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_pam_culturas():
+    """PAM IBGE — producao por cultura (toneladas), ultimos 10 anos.
+    Retorna dois DataFrames: ranking do ultimo ano e historico por cultura.
+    """
+    CULTURAS = {
+        "40124": "Soja", "40122": "Milho", "40106": "Cana",
+        "40127": "Trigo", "40102": "Arroz", "40099": "Algodao",
+    }
+    # Ranking ultimo ano (todas culturas)
+    ranking = pd.DataFrame()
+    try:
+        url = ("https://apisidra.ibge.gov.br/values/t/5457"
+               "/n1/all/v/214/p/last%201/c782/allxt?formato=json")
+        df = pd.read_json(url)
+        df = df.query("V not in ['Valor','...', '-']").copy()
+        df["Producao_t"] = pd.to_numeric(df["V"].astype(str).str.replace(",","."), errors="coerce")
+        df["Cultura"] = df["D4N"].astype(str)
+        df["Ano"] = df["D3N"].astype(str)
+        df = df.dropna(subset=["Producao_t"])
+        df = df[df["Cultura"] != "Total"].copy()
+        ranking = df[["Cultura","Producao_t","Ano"]].sort_values(
+            "Producao_t", ascending=False).reset_index(drop=True)
+    except Exception:
+        pass
+
+    # Historico por cultura (10 anos)
+    historico = pd.DataFrame()
+    frames = {}
+    for cod, nome in CULTURAS.items():
+        try:
+            url = (f"https://apisidra.ibge.gov.br/values/t/5457"
+                   f"/n1/all/v/214/p/last%2010/c782/{cod}?formato=json")
+            df = pd.read_json(url)
+            df = df.query("V not in ['Valor','...', '-']").copy()
+            df["val"] = pd.to_numeric(df["V"].astype(str).str.replace(",","."), errors="coerce")
+            df["ano"] = pd.to_datetime(df["D3N"].astype(str), format="%Y")
+            df = df.dropna(subset=["val","ano"])
+            if not df.empty:
+                frames[nome] = df.set_index("ano")["val"]
+        except Exception:
+            pass
+    if frames:
+        historico = pd.DataFrame(frames).sort_index()
+
+    return ranking, historico
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_agro_indicadores():
+    SERIES = {"VBP": 7415, "Exp_Agro": 22706, "Imp_Agro": 22709, "Saldo_Agro": 22924}
+    df = _coletar_sgs(SERIES, anos=10)
+    if df.empty:
+        return df
+    if "VBP" in df.columns:
+        df["VBP"] = (df["VBP"] / 1000).round(2)
+    return df
 
 
 # -----------------------------------------------------------------------------
@@ -788,21 +849,13 @@ def get_comercio_indicadores():
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_cambios_adicionais():
-    """Cambios EUR, GBP, CNY, JPY, CHF vs BRL — BCB/SGS sem dataFinal.
-    IMPORTANTE: nao usar dataFinal na URL — series retornam vazias com ele.
-    """
     from datetime import datetime
-    fim     = datetime.today()
-    ini     = fim.replace(year=fim.year - 10)
-    ini_dmy = ini.strftime("%d/%m/%Y")
-    SERIES  = {
-        "EUR_BRL": 21619, "GBP_BRL": 21623,
-        "CNY_BRL": 21634, "JPY_BRL": 21621, "CHF_BRL": 21622,
-    }
+    ini_dmy = (datetime.today().replace(year=datetime.today().year - 10)).strftime("%d/%m/%Y")
+    SERIES = {"EUR_BRL": 21619, "GBP_BRL": 21623,
+              "CNY_BRL": 21634, "JPY_BRL": 21621, "CHF_BRL": 21622}
     frames = {}
     for nome, cod in SERIES.items():
-        url = (f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{cod}/dados"
-               f"?formato=json&dataInicial={ini_dmy}")
+        url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{cod}/dados?formato=json&dataInicial={ini_dmy}"
         try:
             sess = requests.Session()
             sess.headers.update({"User-Agent": "Mozilla/5.0"})
@@ -812,69 +865,40 @@ def get_cambios_adicionais():
             if not dados:
                 continue
             df = pd.DataFrame(dados)
-            df["data"]  = pd.to_datetime(df["data"], format="%d/%m/%Y")
-            df["valor"] = pd.to_numeric(
-                df["valor"].astype(str).str.replace(",", "."), errors="coerce")
+            df["data"] = pd.to_datetime(df["data"], format="%d/%m/%Y")
+            df["valor"] = pd.to_numeric(df["valor"].astype(str).str.replace(",", "."), errors="coerce")
             s = df.set_index("data")["valor"].dropna()
-            s.index = pd.to_datetime(s.index)
             frames[nome] = s.resample("MS").last().round(4)
         except Exception:
             pass
     if not frames:
         return pd.DataFrame()
-    df_out = pd.DataFrame(frames)
-    df_out.index = pd.to_datetime(df_out.index)
-    return df_out.sort_index()
+    return pd.DataFrame(frames).sort_index()
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_ppp_data():
-    """Paridade de Poder de Compra — USD/BRL.
-    Fontes identicas ao codigo original de referencia:
-      - USD/BRL nominal: BCB/SGS 3695
-      - IPCA numero-indice: IBGE/SIDRA tabela 1737 v2266
-      - CPI-U EUA: FRED via CSV (observation_date, CPIAUCSL)
-    Metodologia: P_rebased = P_t/P_0 x 100 para ambos antes do calculo.
-      E_ppp = E_0 x (P_rebased / P*_rebased)
-      RER   = E  x (P*_rebased / P_rebased)
-    """
     DATA_BASE = "1999-01-01"
     try:
-        # 1. USD/BRL nominal
-        url_usd = ("https://api.bcb.gov.br/dados/serie/bcdata.sgs.3695/dados"
-                   "?formato=json&dataInicial=01/01/1999")
         sess = requests.Session()
         sess.headers.update({"User-Agent": "Mozilla/5.0"})
-        r_usd = sess.get(url_usd, timeout=60)
-        r_usd.raise_for_status()
+        r_usd = sess.get("https://api.bcb.gov.br/dados/serie/bcdata.sgs.3695/dados?formato=json&dataInicial=01/01/1999", timeout=60)
         df_usd = pd.DataFrame(r_usd.json())
-        df_usd["data"]  = pd.to_datetime(df_usd["data"], format="%d/%m/%Y")
-        df_usd["valor"] = pd.to_numeric(
-            df_usd["valor"].astype(str).str.replace(",", "."), errors="coerce")
+        df_usd["data"] = pd.to_datetime(df_usd["data"], format="%d/%m/%Y")
+        df_usd["valor"] = pd.to_numeric(df_usd["valor"].astype(str).str.replace(",", "."), errors="coerce")
         s_usd = df_usd.set_index("data")["valor"].dropna().resample("MS").last()
 
-        # 2. IPCA numero-indice — SIDRA tabela 1737 v2266
-        url_ipca = ("https://apisidra.ibge.gov.br/values/t/1737"
-                    "/n1/all/v/2266/p/all?formato=json")
-        df_ipca = pd.read_json(url_ipca)
+        df_ipca = pd.read_json("https://apisidra.ibge.gov.br/values/t/1737/n1/all/v/2266/p/all?formato=json")
         df_ipca = df_ipca.query("V not in ['Valor','...', '-']").copy()
-        df_ipca["valor"] = pd.to_numeric(
-            df_ipca["V"].astype(str).str.replace(",", "."), errors="coerce")
-        df_ipca["data"] = pd.to_datetime(
-            df_ipca["D3C"].astype(str), format="%Y%m")
-        s_ipca = (df_ipca.dropna(subset=["data","valor"])
-                  .set_index("data")["valor"].sort_index())
+        df_ipca["valor"] = pd.to_numeric(df_ipca["V"].astype(str).str.replace(",", "."), errors="coerce")
+        df_ipca["data"] = pd.to_datetime(df_ipca["D3C"].astype(str), format="%Y%m")
+        s_ipca = df_ipca.dropna(subset=["data","valor"]).set_index("data")["valor"].sort_index()
         s_ipca = s_ipca[s_ipca.index >= DATA_BASE].resample("MS").last()
 
-        # 3. CPI-U EUA — FRED via CSV direto
-        url_cpi = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL"
-        df_cpi = pd.read_csv(url_cpi)
+        df_cpi = pd.read_csv("https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL")
         df_cpi["data"] = pd.to_datetime(df_cpi["observation_date"])
-        df_cpi["cpi"]  = pd.to_numeric(df_cpi["CPIAUCSL"], errors="coerce")
-        s_cpi = (df_cpi.set_index("data")["cpi"].dropna()
-                 .sort_index()[DATA_BASE:].resample("MS").last())
+        s_cpi = df_cpi.set_index("data")["CPIAUCSL"].dropna().sort_index()[DATA_BASE:].resample("MS").last()
 
-        # Alinhar e calcular
         df = pd.DataFrame({"E": s_usd, "ipca": s_ipca, "cpi": s_cpi}).dropna()
         if df.empty or len(df) < 24:
             return pd.DataFrame()
@@ -883,18 +907,14 @@ def get_ppp_data():
         df["P_star_rebased"] = df["cpi"]  / df["cpi"].iloc[0]  * 100
         df["E_ppp"]          = df["E"].iloc[0] * (df["P_rebased"] / df["P_star_rebased"])
         df["RER"]            = df["E"] * (df["P_star_rebased"] / df["P_rebased"])
-
-        rer_media          = float(df["RER"].mean())
-        rer_std            = float(df["RER"].std())
-        df["misalignment"] = df["RER"] - rer_media
-        df["rer_media"]    = rer_media
-        df["rer_std"]      = rer_std
-
+        rer_media            = float(df["RER"].mean())
+        rer_std              = float(df["RER"].std())
+        df["misalignment"]   = df["RER"] - rer_media
+        df["rer_media"]      = rer_media
+        df["rer_std"]        = rer_std
         return df[["E","E_ppp","RER","misalignment","rer_media","rer_std"]].sort_index()
-
     except Exception:
         return pd.DataFrame()
-
 # -----------------------------------------------------------------------------
 # HELPERS
 # -----------------------------------------------------------------------------
