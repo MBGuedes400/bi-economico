@@ -8,29 +8,36 @@ import os
 # Mapeamento: nome_pagina → grupo
 GRUPOS = {
     "Home":                 "visao_geral",
+    # Macro
     "Inflacao":             "macro",
     "Juros":                "macro",
     "Atividade":            "macro",
+    "AtividadeEconomica":   "macro",
     "Mercado_Trabalho":     "macro",
+    "MercadoTrabalho":      "macro",
     "Setor_Externo":        "macro",
+    "SetorExterno":         "macro",
+    # Analises
     "Comparativos":         "analises",
     "Analises_Monetarias":  "analises",
+    "AnalisesMonetarias":   "analises",
     "Analises_Reais":       "analises",
+    "AnalisesReais":        "analises",
     "Acuracia_Focus":       "analises",
-    # Onda 1
+    "AcuraciaFocus":        "analises",
+    # Mercado Financeiro — Onda 1
     "Ibovespa":             "mercado",
     "Fundos":               "mercado",
     "Liquidez":             "mercado",
     "Credito":              "mercado",
     "Commodities":          "mercado",
-    # Onda 2
+    # Setorial — Onda 2
     "Industria":            "setorial",
     "Comercio":             "setorial",
     "Agropecuaria":         "setorial",
-    # Onda 3
+    # Internacional — Onda 3
     "Internacional":        "internacional",
     "Cambios":              "internacional",
-    "Commodities":          "internacional",
 }
 
 
@@ -100,19 +107,24 @@ def sidebar_padrao(pagina_atual=None, filtros_extra=None):
         # ── GRUPO 5: Setorial ────────────────────────────────────────────
         with st.expander("🏭  Setorial",
                          expanded=(grupo_ativo == "setorial")):
-            st.page_link("pages/15_Industria.py", label="⚙️  Produção Industrial")
-            st.page_link("pages/16_Comercio.py",  label="🛒  Varejo & Confiança")
             st.markdown(
                 "<span style='color:#555;font-size:0.8rem;padding-left:8px'>"
-                "🚧 Agropecuária — em breve</span>", unsafe_allow_html=True)
+                "🚧 Em breve</span>", unsafe_allow_html=True)
+            # st.page_link("pages/13_Industria.py",    label="⚙️  Produção Industrial")
+            # st.page_link("pages/14_Comercio.py",     label="🛒  Varejo & Confiança")
+            # st.page_link("pages/15_Agropecuaria.py", label="🌾  Agropecuária")
 
         # ── GRUPO 6: Internacional ───────────────────────────────────────
         with st.expander("🌐  Internacional",
                          expanded=(grupo_ativo == "internacional")):
-            st.page_link("pages/19_Cambios.py", label="💱  Câmbios & PPP")
             st.markdown(
                 "<span style='color:#555;font-size:0.8rem;padding-left:8px'>"
-                "🚧 PIB Global — em breve</span>", unsafe_allow_html=True)
+                "🚧 Em breve</span>", unsafe_allow_html=True)
+            # st.page_link("pages/16_Internacional.py", label="🌍  PIB Global & OCDE")
+            # st.page_link("pages/17_Cambios.py",       label="💱  Câmbios Diversas")
+            # st.page_link("pages/18_Commodities.py",   label="🌽  Commodities")
+
+        st.markdown("---")
 
         # Filtros da página
         if filtros_extra:
