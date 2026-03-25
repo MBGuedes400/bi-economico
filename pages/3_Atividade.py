@@ -41,7 +41,7 @@ def _filtros():
         index=0
     )
 
-sidebar_padrao(filtros_extra=_filtros)
+sidebar_padrao(pagina_atual="Atividade", filtros_extra=_filtros)
 
 
 # -----------------------------------------------------------------------------

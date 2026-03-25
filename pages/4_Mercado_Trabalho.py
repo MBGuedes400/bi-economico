@@ -35,7 +35,7 @@ def _filtros():
         value=(2019, datetime.today().year)
     )
 
-sidebar_padrao(filtros_extra=_filtros)
+sidebar_padrao(pagina_atual="Mercado_Trabalho", filtros_extra=_filtros)
 
 
 # -----------------------------------------------------------------------------
