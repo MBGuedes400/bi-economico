@@ -1,259 +1,222 @@
-# =============================================================================
-# Home.py — Página inicial do BI Econômico
-# =============================================================================
-
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# -*- coding: utf-8 -*-
+"""
+Home.py — Painel Macroeconômico Brasil
+BI Econômico Brasileiro — Impeto Gestão e Negócios
+"""
 
 import streamlit as st
-import pandas as pd
+import requests
 from datetime import datetime
-try:
-    from zoneinfo import ZoneInfo
-    _BRT = ZoneInfo("America/Sao_Paulo")
-    def _agora():
-        return datetime.now(_BRT)
-except Exception:
-    def _agora():
-        return datetime.now()
+import pytz, sys, os
 
-from utils.dados import (
-    get_inflacao, get_juros, get_cambio,
-    get_pnad, get_focus_anual, ultimo_valor, focus_ultimo,
-    METAS_BCB
-)
-from utils.analise import resumo_geral
-from utils.layout  import CSS_GLOBAL, rodape, sidebar_padrao
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from utils.layout import sidebar_padrao, CSS_GLOBAL, rodape
 
 st.set_page_config(
-    page_title="BI Econômico",
+    page_title="Painel Macro Brasil | Impeto",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
+
 st.markdown(CSS_GLOBAL, unsafe_allow_html=True)
-
-
-# -----------------------------------------------------------------------------
-# SIDEBAR
-# -----------------------------------------------------------------------------
 sidebar_padrao(pagina_atual="Home")
 
+# ── CSS da Home ────────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+/* Estilização do Card como Link */
+.card-link {
+    display: block;
+    background: #1A1D27;
+    border: 1px solid #2A2D3A;
+    border-radius: 12px;
+    padding: 16px 18px 14px;
+    margin-bottom: 15px;
+    text-decoration: none !important;
+    transition: all 0.2s ease-in-out;
+    min-height: 140px;
+    cursor: pointer;
+}
+.card-link:hover { 
+    border-color: #00D4FF; 
+    background: #1E2235; 
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+.card-titulo  { font-size: 1.0rem; font-weight: 700; color: #FFFFFF; margin-bottom: 4px; }
+.card-kpi     { font-size: 1.35rem; font-weight: 800; color: #00D4FF; margin: 4px 0 6px; }
+.card-kpi-dev { font-size: 1.0rem; font-weight: 600; color: #555; margin: 4px 0 6px; }
+.card-desc    { font-size: 0.77rem; color: #777; line-height: 1.45; }
+.secao-titulo {
+    font-size: 0.82rem; font-weight: 700; color: #888;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    margin: 30px 0 10px; padding-bottom: 7px;
+    border-bottom: 1px solid #2A2D3A;
+}
+.badge-novo {
+    background: #1E4620; color: #4CAF50;
+    font-size: 0.6rem; font-weight: 700;
+    padding: 2px 6px; border-radius: 8px;
+    margin-left: 7px; vertical-align: middle;
+}
+.badge-dev {
+    background: #2A2000; color: #FF9800;
+    font-size: 0.6rem; font-weight: 700;
+    padding: 2px 6px; border-radius: 8px;
+    margin-left: 7px; vertical-align: middle;
+}
+.kpi-barra {
+    background: #141720; border: 1px solid #2A2D3A;
+    border-radius: 8px; padding: 9px 18px;
+    font-size: 0.84rem; color: #CCCCCC; margin-bottom: 22px;
+}
+/* Remove sublinhado padrão de links */
+a { text-decoration: none !important; }
+</style>
+""", unsafe_allow_html=True)
 
-# -----------------------------------------------------------------------------
-# CARREGAR DADOS
-# -----------------------------------------------------------------------------
-with st.spinner("Carregando indicadores..."):
-    df_infl  = get_inflacao()
-    df_juros = get_juros()
-    df_camb  = get_cambio()
-    df_fa    = get_focus_anual()
+
+# ── KPIs ao vivo ───────────────────────────────────────────────────────────────
+@st.cache_data(ttl=3600, show_spinner=False)
+def _sgs(cod, n=1):
     try:
-        df_pnad = get_pnad()
-    except Exception:
-        df_pnad = pd.DataFrame()
+        url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{cod}/dados/ultimos/{n}?formato=json"
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
+        dados = r.json()
+        if n == 1:
+            return float(dados[0]["valor"])
+        return [float(d["valor"]) for d in dados]
+    except:
+        return None
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _ipea(cod, nivel="Brasil"):
+    try:
+        url = f"http://www.ipeadata.gov.br/api/odata4/ValoresSerie(SERCODIGO='{cod}')"
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        dados = [x for x in r.json().get("value", []) if x.get("NIVNOME") == nivel]
+        return float(sorted(dados, key=lambda x: x["VALDATA"])[-1]["VALVALOR"])
+    except:
+        return None
 
-# -----------------------------------------------------------------------------
-# HEADER
-# -----------------------------------------------------------------------------
+@st.cache_data(ttl=3600, show_spinner=False)
+def carregar_kpis():
+    k = {}
+    k["ipca"]       = _sgs(13522)
+    k["selic"]      = _sgs(432)
+    k["usd"]        = _sgs(1)
+    k["desemprego"] = _sgs(24369)
+    ibcbr_13 = _sgs(24363, 13)
+    k["ibcbr_var"] = (ibcbr_13[-1] / ibcbr_13[0] - 1) * 100 if ibcbr_13 and len(ibcbr_13) == 13 else None
+    m4_mi = _sgs(27813)
+    k["m4_tri"] = m4_mi / 1_000_000 if m4_mi else None
+    m4_13 = _sgs(27813, 13)
+    k["m4_var"] = (m4_13[-1] / m4_13[0] - 1) * 100 if m4_13 and len(m4_13) == 13 else None
+    k["inadimp"]   = _sgs(21084)
+    k["pobreza"]   = _ipea("PNADCA_TXPNUF")
+    k["gini"]      = 0.506
+    return k
+
+with st.spinner("Atualizando indicadores ao vivo..."):
+    K = carregar_kpis()
+
+def fmt(v, fmt_str):
+    if v is None: return "—"
+    return fmt_str.format(v)
+
+# ── Cabeçalho ──────────────────────────────────────────────────────────────────
+brt = pytz.timezone("America/Sao_Paulo")
+agora = datetime.now(brt).strftime("%d/%m/%Y %H:%M")
+
 st.markdown(f"""
-<div style='text-align:center; padding: 1rem 0 0.5rem;'>
-    <h1>📊 BI Econômico Brasileiro</h1>
-    <p style='color:#AAAAAA; margin-top:-10px;'>
-        Painel de monitoramento macroeconômico ·
-        Atualizado em {_agora().strftime("%d/%m/%Y %H:%M")} (horário de Brasília)
-    </p>
+<div style='text-align:center;padding:1.8rem 0 0.8rem;'>
+  <div style='font-size:2.4rem;'>📊</div>
+  <h1 style='font-size:2.1rem;font-weight:800;color:#FFF;margin:.2rem 0;'>
+    Painel Macroeconômico Brasil
+  </h1>
+  <p style='color:#555;font-size:.85rem;margin:0;'>
+    Monitoramento econômico integrado · Atualizado em {agora} (horário de Brasília)
+  </p>
 </div>
 """, unsafe_allow_html=True)
-st.markdown("---")
 
-resumo = resumo_geral(df_infl, df_juros, df_camb, df_pnad, df_fa)
-st.markdown(f"**Resumo:** {resumo}")
-st.markdown("---")
+partes = []
+if K["ipca"]: partes.append(f"<b>IPCA 12m:</b> {K['ipca']:.2f}%")
+if K["selic"]: partes.append(f"<b>Selic:</b> {K['selic']:.2f}% a.a.")
+if K["usd"]: partes.append(f"<b>Dólar:</b> R$ {K['usd']:.2f}")
+if K["desemprego"]: partes.append(f"<b>Desemprego:</b> {K['desemprego']:.1f}%")
+if partes:
+    st.markdown(f"<div class='kpi-barra'>📡 Ao vivo — {' &nbsp;·&nbsp; '.join(partes)}</div>", unsafe_allow_html=True)
 
 
-# -----------------------------------------------------------------------------
-# KPI CARDS
-# -----------------------------------------------------------------------------
-st.markdown("### Últimas leituras")
-
-ano_ref  = datetime.today().year
-meta_bcb = METAS_BCB.get(ano_ref, 3.0)
-
-ipca_v,   _ = ultimo_valor(df_infl,  "IPCA_acum12m")
-selic_v,  _ = ultimo_valor(df_juros, "Selic_Meta")
-cdi_v,    _ = ultimo_valor(df_juros, "CDI")
-usd_v,    _ = ultimo_valor(df_camb,  "USD_BRL")
-desemp_v, _ = ultimo_valor(df_pnad,  "Taxa_Desocupacao")
-
-def delta_v(df, col, n=1):
-    if df is None or df.empty: return None
-    if isinstance(df, pd.DataFrame):
-        if col not in df.columns: return None
-        s = df[col].dropna()
+# ── Helper de Card Clicável (HTML Nativo) ─────────────────────────────────────
+def card(col, emoji, titulo, kpi_txt, desc, page_file, badge=None):
+    badge_html = f"<span class='badge-{badge}'>{badge.upper()}</span>" if badge else ""
+    kpi_class = "card-kpi-dev" if (badge == "dev" or kpi_txt in ("—", "Em desenvolvimento")) else "card-kpi"
+    
+    # Lógica de URL do Streamlit: remove 'pages/', remove números iniciais e '.py'
+    # Ex: 'pages/1_Inflacao.py' -> 'Inflacao'
+    if page_file and badge != "dev":
+        page_name = page_file.replace("pages/", "").replace(".py", "")
+        if "_" in page_name:
+            page_name = page_name.split("_", 1)[1]
+        href = f'href="{page_name}" target="_self"'
     else:
-        s = df.dropna()
-    if len(s) <= n: return None
-    return round(float(s.iloc[-1] - s.iloc[-1-n]), 2)
+        href = 'style="cursor: default; opacity: 0.6;"'
 
-c1, c2, c3, c4, c5, c6 = st.columns(6)
-with c1:
-    d = delta_v(df_infl, "IPCA_acum12m")
-    st.metric("IPCA 12m", f"{ipca_v:.2f}%" if ipca_v else "—",
-              delta=f"{d:+.2f}pp" if d else None)
-with c2:
-    st.metric("Selic Meta", f"{selic_v:.2f}%" if selic_v else "—",
-              delta="a.a.", delta_color="off")
-with c3:
-    st.metric("CDI", f"{cdi_v:.2f}%" if cdi_v else "—",
-              delta="a.m.", delta_color="off")
-with c4:
-    d = delta_v(df_camb, "USD_BRL")
-    st.metric("USD/BRL", f"R$ {usd_v:.2f}" if usd_v else "—",
-              delta=f"{d:+.2f}" if d else None, delta_color="inverse")
-with c5:
-    st.metric("Desemprego", f"{desemp_v:.1f}%" if desemp_v else "—",
-              delta="PNAD Contínua", delta_color="off")
-with c6:
-    st.metric("Meta BCB", f"{meta_bcb:.1f}%",
-              delta=f"Teto: {meta_bcb+1.5:.1f}%", delta_color="off")
-
-st.markdown("---")
+    html = f"""
+    <a {href}>
+        <div class="card-link">
+            <div class='card-titulo'>{emoji} {titulo}{badge_html}</div>
+            <div class='{kpi_class}'>{kpi_txt}</div>
+            <div class='card-desc'>{desc}</div>
+        </div>
+    </a>
+    """
+    col.markdown(html, unsafe_allow_html=True)
 
 
-# -----------------------------------------------------------------------------
-# CARDS DE NAVEGAÇÃO
-# -----------------------------------------------------------------------------
-st.markdown("### Análises por bloco")
+# ── Conteúdo do Painel ────────────────────────────────────────────────────────
 
-# ── Indicadores Macro ─────────────────────────────────────────────────────────
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.markdown("""<div class="card-bloco">
-        <h3>📊 Inflação</h3>
-        <p style="color:#AAAAAA; font-size:0.9rem;">
-        Comparativo IPCA × IGP-M × INPC · Decomposição por grupos ·
-        Realizado vs Esperado (Focus) · Acumulados e tendências.
-        </p></div>""", unsafe_allow_html=True)
-with col2:
-    st.markdown("""<div class="card-bloco">
-        <h3>🏦 Juros</h3>
-        <p style="color:#AAAAAA; font-size:0.9rem;">
-        Selic Meta e Over · CDI · Taxa real de juros ·
-        Juro real ex-ante · Expectativa COPOM · Comparação histórica.
-        </p></div>""", unsafe_allow_html=True)
-with col3:
-    st.markdown("""<div class="card-bloco">
-        <h3>📈 Atividade Econômica</h3>
-        <p style="color:#AAAAAA; font-size:0.9rem;">
-        PIB trimestral por setor · IBC-Br mensal ·
-        Decomposição da demanda · Expectativas Focus · Ciclos econômicos.
-        </p></div>""", unsafe_allow_html=True)
+# SEÇÃO: MACRO
+st.markdown("<div class='secao-titulo'>📈 Indicadores Macroeconômicos</div>", unsafe_allow_html=True)
+cols = st.columns(5)
+card(cols[0], "📊", "Inflação", fmt(K["ipca"], "{:.2f}% a.a."), "IPCA · Núcleos · Difusão · Decomposição por grupos.", "pages/1_Inflacao.py")
+card(cols[1], "🏦", "Juros", fmt(K["selic"], "{:.2f}% a.a."), "Selic meta e efetiva · Curva DI · CDI · Spread bancário.", "pages/2_Juros.py")
+card(cols[2], "📈", "Atividade", fmt(K["ibcbr_var"], "{:+.1f}% IBC-Br"), "IBC-Br · PIB trimestral · Índices setoriais.", "pages/3_Atividade.py")
+card(cols[3], "👷", "Trabalho", fmt(K["desemprego"], "{:.1f}% desemp."), "Desemprego PNAD · CAGED · Massa salarial.", "pages/4_Mercado_Trabalho.py")
+card(cols[4], "🌎", "Externo", fmt(K["usd"], "R$ {:.2f} / USD"), "Balança comercial · Conta corrente · Reservas.", "pages/5_Setor_Externo.py")
 
-col4, col5, col6 = st.columns(3)
-with col4:
-    st.markdown("""<div class="card-bloco">
-        <h3>👷 Mercado de Trabalho</h3>
-        <p style="color:#AAAAAA; font-size:0.9rem;">
-        Taxa de desocupação (PNAD) · Informalidade ·
-        CAGED · Massa salarial real · Participação na força de trabalho.
-        </p></div>""", unsafe_allow_html=True)
-with col5:
-    st.markdown("""<div class="card-bloco">
-        <h3>🌎 Setor Externo</h3>
-        <p style="color:#AAAAAA; font-size:0.9rem;">
-        USD · EUR · CNY · Reservas internacionais ·
-        Variação cambial acumulada · Pass-through cambial.
-        </p></div>""", unsafe_allow_html=True)
-with col6:
-    st.markdown("""<div class="card-bloco">
-        <h3>📊 Comparativos</h3>
-        <p style="color:#AAAAAA; font-size:0.9rem;">
-        Compare livremente indicadores de inflação · juros · câmbio ·
-        atividade · emprego · correlação e eixo duplo automático.
-        </p></div>""", unsafe_allow_html=True)
+# SEÇÃO: ANÁLISES AVANÇADAS
+st.markdown("<div class='secao-titulo'>🔬 Análises Avançadas</div>", unsafe_allow_html=True)
+cols = st.columns(4)
+card(cols[0], "📊", "Comparativos", "Brasil vs mundo", "Brasil vs emergentes · Ranking inflação · Benchmarks.", "pages/6_Comparativos.py")
+card(cols[1], "🔬", "Monetárias", fmt(K["m4_tri"], "R$ {:.1f} tri"), "Agregados M1/M2/M4 · Multiplicador · Poupança.", "pages/7_Analises_Monetarias.py")
+card(cols[2], "🏗️", "Reais", "Capacidade ociosa", "Indústria · Construção · Capacidade ociosa · Estoques.", "pages/8_Analises_Reais.py")
+card(cols[3], "🎯", "Focus", "Projeções vs real", "Projeções do mercado vs realizado · Ranking acertos.", "pages/9_Acuracia_Focus.py")
 
-# ── Análises Avançadas ────────────────────────────────────────────────────────
-st.markdown("### Análises avançadas")
-col7, col8, col9 = st.columns(3)
-with col7:
-    st.markdown("""<div class="card-bloco">
-        <h3>🔬 Análises Monetárias</h3>
-        <p style="color:#AAAAAA; font-size:0.9rem;">
-        Juro real ex-ante e ex-post · Núcleos de inflação BCB ·
-        Difusão do IPCA · Curva de Phillips · Pass-through cambial.
-        </p></div>""", unsafe_allow_html=True)
-with col8:
-    st.markdown("""<div class="card-bloco">
-        <h3>🏗️ Análises Reais</h3>
-        <p style="color:#AAAAAA; font-size:0.9rem;">
-        Hiato do produto (Filtro HP) · Nowcasting IBC-Br ·
-        Yield curve Tesouro Direto · Decomposição do crescimento.
-        </p></div>""", unsafe_allow_html=True)
-with col9:
-    st.markdown("""<div class="card-bloco">
-        <h3>🎯 Acurácia Focus</h3>
-        <p style="color:#AAAAAA; font-size:0.9rem;">
-        Projeções vs realizado · Erro médio e viés das casas ·
-        Ranking de acurácia · Análise dinâmica por indicador e ano.
-        </p></div>""", unsafe_allow_html=True)
+# SEÇÃO: MERCADO FINANCEIRO
+st.markdown("<div class='secao-titulo'>💹 Mercado Financeiro</div>", unsafe_allow_html=True)
+cols = st.columns(5)
+card(cols[0], "📉", "Ações", "Ibovespa", "Histórico · Top 8 ações · Volatilidade · Prêmio de risco.", "pages/10_Ibovespa.py")
+card(cols[1], "💼", "Fundos", "Captação líquida", "Captação por categoria · PL consolidado · Evolução.", "pages/11_Fundos.py")
+card(cols[2], "💧", "Liquidez", fmt(K["m4_var"], "{:.1f}% a.a."), "M4 · Poupança · Multiplicador monetário.", "pages/12_Liquidez.py")
+card(cols[3], "🏧", "Crédito", fmt(K["inadimp"], "{:.1f}% inad."), "Crédito PF/PJ · Livre vs Direcionado · +90 dias.", "pages/13_Credito.py")
+card(cols[4], "🌽", "Commodities", "Base 100", "Soja · Milho · Trigo · Petróleo · Ouro.", "pages/14_Commodities.py")
 
-# ── Mercado Financeiro ────────────────────────────────────────────────────────
-st.markdown("### Mercado financeiro")
-col10, col11, col12, col13 = st.columns(4)
-with col10:
-    st.markdown("""<div class="card-bloco">
-        <h3>📉 Ibovespa & Ações</h3>
-        <p style="color:#AAAAAA; font-size:0.9rem;">
-        Índice histórico · Variação mensal · Top 8 ações base 100 ·
-        Volatilidade · Prêmio de risco vs Selic.
-        </p></div>""", unsafe_allow_html=True)
-with col11:
-    st.markdown("""<div class="card-bloco">
-        <h3>💼 Meios de Pagamento</h3>
-        <p style="color:#AAAAAA; font-size:0.9rem;">
-        Agregados M1 · M2 · M4 · Poupança ·
-        Multiplicador monetário · Composição e evolução histórica.
-        </p></div>""", unsafe_allow_html=True)
-with col12:
-    st.markdown("""<div class="card-bloco">
-        <h3>🏧 Crédito & Inadimplência</h3>
-        <p style="color:#AAAAAA; font-size:0.9rem;">
-        Crédito PF · PJ · Total · Livre vs Direcionado ·
-        Taxas por modalidade · Inadimplência acima de 90 dias.
-        </p></div>""", unsafe_allow_html=True)
-with col13:
-    st.markdown("""<div class="card-bloco">
-        <h3>🌽 Commodities</h3>
-        <p style="color:#AAAAAA; font-size:0.9rem;">
-        Soja · Milho · Trigo · Café · Açúcar · Petróleo · Ouro ·
-        Base 100 comparada · Variação no período.
-        </p></div>""", unsafe_allow_html=True)
+# SEÇÃO: SETORIAL
+st.markdown("<div class='secao-titulo'>🏭 Setorial</div>", unsafe_allow_html=True)
+cols = st.columns(3)
+card(cols[0], "⚙️", "Indústria", "PIM-PF", "PIM-PF · NUCI · ICEI · Ciclo industrial.", "pages/15_Industria.py")
+card(cols[1], "🛒", "Varejo", "PMC", "PMC · ICC FGV · Endividamento familiar CNC.", "pages/16_Comercio.py")
+card(cols[2], "🌾", "Agro", "LSPA · VBP", "Safra atual · Top culturas PAM · Balança agrícola.", "pages/17_Agropecuaria.py")
 
-# ── Em breve ──────────────────────────────────────────────────────────────────
-st.markdown("### Em desenvolvimento")
-col14, col15, col16 = st.columns(3)
-with col14:
-    st.markdown("""<div class="card-bloco" style="opacity:0.5;">
-        <h3>🏭 Setorial</h3>
-        <p style="color:#AAAAAA; font-size:0.9rem;">
-        Produção Industrial (IBGE) · Varejo · Confiança CNC e FGV ·
-        Agropecuária · VBP Tesouro · Safra Conab.
-        </p></div>""", unsafe_allow_html=True)
-with col15:
-    st.markdown("""<div class="card-bloco" style="opacity:0.5;">
-        <h3>🌐 Internacional</h3>
-        <p style="color:#AAAAAA; font-size:0.9rem;">
-        PIB por país (OCDE) · Prime Rate · Câmbios diversas ·
-        Iene · Franco Suíço · Libra · Histórico longo.
-        </p></div>""", unsafe_allow_html=True)
-with col16:
-    st.markdown("""<div class="card-bloco" style="opacity:0.5;">
-        <h3>📡 Inflação Forward</h3>
-        <p style="color:#AAAAAA; font-size:0.9rem;">
-        Projeções das principais casas da Faria Lima ·
-        IPCA forward 12m vs realizado · Sugestão do professor avaliador.
-        </p></div>""", unsafe_allow_html=True)
+# SEÇÃO: SOCIAL
+st.markdown("<div class='secao-titulo'>🫂 Análise Social <span class='badge-novo'>NOVO</span></div>", unsafe_allow_html=True)
+cols = st.columns(3)
+card(cols[0], "📊", "Diagnóstico", f"Gini: {K['gini']:.3f}", "Gini · Curva de Lorenz · Rendimento · Pobreza.", "pages/20_Social_Diagnostico.py", badge="novo")
+card(cols[1], "🗺️", "Vulnerabilidade", "Analfab.: MA 16.1% × SC 2.0%", "6 indicadores por UF · ICV composto · Ranking estadual.", "pages/21_Social_Vulnerabilidade.py", badge="novo")
+card(cols[2], "🏛️", "Políticas", "BF: R$ 168.7 bi · MA dep. 9.3%", "Multiplicador Bolsa Família · Fronteira de eficiência alocativa.", "pages/22_Social_Politicas.py", badge="novo")
+
 rodape()
