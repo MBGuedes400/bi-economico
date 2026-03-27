@@ -42,6 +42,10 @@ GRUPOS = {
     "Internacional":        "internacional",
     "Cambios":              "internacional",
     "19_Cambios":           "internacional",
+    "PIB Global & OCDE":    "internacional",
+    "18_PIB_Global":        "internacional",
+    "Fluxo_Capitais": "internacional",
+    "23_Fluxo_Capitais": "internacional",
     # Social — Onda 4
     "Social_Diagnostico":      "social",
     "20_Social_Diagnostico":   "social",
@@ -126,6 +130,8 @@ def sidebar_padrao(pagina_atual=None, filtros_extra=None):
         with st.expander("🌐  Internacional",
                          expanded=(grupo_ativo == "internacional")):
             st.page_link("pages/19_Cambios.py", label="💱  Câmbios & PPP")
+            st.page_link("pages/18_PIB_Global.py", label="🌍  PIB Global & OCDE")
+            st.page_link("pages/23_Fluxo_Capitais.py", label="💸  Fluxo de Capitais")
 
         # ── GRUPO 7: Análise Social ──────────────────────────────────────
         with st.expander("🫂  Análise Social",

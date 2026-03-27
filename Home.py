@@ -212,6 +212,13 @@ card(cols[0], "⚙️", "Indústria", "PIM-PF", "PIM-PF · NUCI · ICEI · Ciclo
 card(cols[1], "🛒", "Varejo", "PMC", "PMC · ICC FGV · Endividamento familiar CNC.", "pages/16_Comercio.py")
 card(cols[2], "🌾", "Agro", "LSPA · VBP", "Safra atual · Top culturas PAM · Balança agrícola.", "pages/17_Agropecuaria.py")
 
+# SEÇÃO: INTERNACIONAL
+st.markdown("<div class='secao-titulo'>🌐 Internacional & Câmbio <span class='badge-novo'>NOVO</span></div>", unsafe_allow_html=True)
+cols = st.columns(3)
+card(cols[0], "💱", "Câmbios & PPP", fmt(K["usd"], "USD/BRL R$ {:.2f}"), "USD · EUR · GBP · CNY · PPP · Taxa real · Desalinhamento.", "pages/19_Cambios.py")
+card(cols[1], "🌍", "PIB Global", "19 países · até 2024", "Crescimento · Renda/PPP · Inflação · Alta tecnologia · Juros BC.", "pages/18_PIB_Global.py", badge="novo")
+card(cols[2], "💸", "Fluxo de Capitais", "IED: US$ 74.1 bi (2024)", "IED · Reservas · Transações correntes · Comparativo global.", "pages/23_Fluxo_Capitais.py", badge="novo")
+
 # SEÇÃO: SOCIAL
 st.markdown("<div class='secao-titulo'>🫂 Análise Social <span class='badge-novo'>NOVO</span></div>", unsafe_allow_html=True)
 cols = st.columns(3)
